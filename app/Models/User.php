@@ -3,8 +3,10 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -16,12 +18,17 @@ class User extends Authenticatable
     /**
      * The attributes that are mass assignable.
      *
+     * `role` is deliberately excluded so it can never be set from request input;
+     * assign it explicitly instead (e.g. $user->role = UserRole::Admin).
+     *
      * @var list<string>
      */
     protected $fillable = [
         'name',
         'email',
         'password',
+        'phone',
+        'address',
     ];
 
     /**
@@ -44,6 +51,20 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'role' => UserRole::class,
         ];
+    }
+
+    /**
+     * @return HasMany<Order, $this>
+     */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === UserRole::Admin;
     }
 }
