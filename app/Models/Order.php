@@ -6,6 +6,7 @@ use App\Enums\OrderStatus;
 use App\Enums\ProductStatus;
 use Database\Factories\OrderFactory;
 use DomainException;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,9 +28,17 @@ class Order extends Model
         'user_id',
         'order_number',
         'total',
+        'shipping_fee',
         'status',
+        'shipping_name',
+        'shipping_phone',
         'shipping_address',
     ];
+
+    /**
+     * Characters for order numbers: no 0/O or 1/I/L, so customers can read them out.
+     */
+    private const ORDER_NUMBER_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
     /**
      * Get the attributes that should be cast.
@@ -40,8 +49,37 @@ class Order extends Model
     {
         return [
             'total' => 'decimal:2',
+            'shipping_fee' => 'decimal:2',
             'status' => OrderStatus::class,
         ];
+    }
+
+    /**
+     * A new order number like "TS-20261022-K7M2QX", unique among existing orders
+     * (the column is also unique-indexed as a backstop).
+     */
+    public static function generateOrderNumber(): string
+    {
+        do {
+            $suffix = '';
+            for ($i = 0; $i < 6; $i++) {
+                $suffix .= self::ORDER_NUMBER_ALPHABET[random_int(0, strlen(self::ORDER_NUMBER_ALPHABET) - 1)];
+            }
+
+            $number = 'TS-'.now()->format('Ymd').'-'.$suffix;
+        } while (static::where('order_number', $number)->exists());
+
+        return $number;
+    }
+
+    /**
+     * Items total before shipping.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function subtotal(): Attribute
+    {
+        return Attribute::get(fn () => number_format((float) $this->total - (float) $this->shipping_fee, 2, '.', ''));
     }
 
     /**

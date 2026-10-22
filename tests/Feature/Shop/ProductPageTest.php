@@ -69,19 +69,37 @@ class ProductPageTest extends TestCase
         $this->get(route('shop.show', 'nike-air-jordan-1'))->assertSee('No photo yet');
     }
 
-    public function test_guests_are_asked_to_log_in_and_return_to_the_product(): void
+    public function test_guests_and_customers_can_add_to_cart_from_the_product_page(): void
     {
-        $returnPath = '/shop/nike-air-jordan-1';
+        $form = 'action="'.route('cart.items.store').'"';
 
         $this->get(route('shop.show', 'nike-air-jordan-1'))
-            ->assertSee('Log in to buy')
-            ->assertSee(e(route('login', ['return' => $returnPath])), false)
-            ->assertDontSee('Add to cart');
+            ->assertSee($form, false)
+            ->assertSee('Add to cart')
+            ->assertDontSee('id="quantity"', false); // stock 1: no quantity picker
 
+        $this->actingAs(User::factory()->create())
+            ->get(route('shop.show', 'nike-air-jordan-1'))
+            ->assertSee($form, false);
+    }
+
+    public function test_quantity_picker_appears_when_several_pairs_are_in_stock(): void
+    {
+        $this->product->update(['stock' => 3]);
+
+        $this->get(route('shop.show', 'nike-air-jordan-1'))
+            ->assertSee('id="quantity"', false)
+            ->assertSee('<option value="3">3</option>', false)
+            ->assertSee('In stock — 3 pairs left');
+    }
+
+    public function test_login_return_parameter_brings_the_shopper_back(): void
+    {
         $customer = User::factory()->create();
-        $this->get(route('login', ['return' => $returnPath]))->assertOk();
+
+        $this->get(route('login', ['return' => '/cart']))->assertOk();
         $this->post('/login', ['email' => $customer->email, 'password' => 'password'])
-            ->assertRedirect(url($returnPath));
+            ->assertRedirect(url('/cart'));
     }
 
     public function test_login_return_parameter_cannot_redirect_off_site(): void
@@ -96,15 +114,6 @@ class ProductPageTest extends TestCase
         }
     }
 
-    public function test_logged_in_customers_see_a_disabled_add_to_cart_button(): void
-    {
-        $this->actingAs(User::factory()->create())
-            ->get(route('shop.show', 'nike-air-jordan-1'))
-            ->assertSee('Add to cart')
-            ->assertSee('Cart opens soon.')
-            ->assertDontSee('Log in to buy');
-    }
-
     public function test_sold_products_show_a_sold_label_instead_of_buying(): void
     {
         $this->product->update(['status' => 'sold', 'stock' => 0]);
@@ -114,7 +123,7 @@ class ProductPageTest extends TestCase
             ->assertSee('Sold')
             ->assertSee('Browse other UK 8.5 shoes')
             ->assertDontSee('Add to cart')
-            ->assertDontSee('Log in to buy')
+            ->assertDontSee(route('cart.items.store'), false)
             ->assertDontSee('In stock');
     }
 

@@ -36,7 +36,10 @@ class OrderSeeder extends Seeder
                 ->for($customer)
                 ->status($status)
                 ->create([
+                    'shipping_name' => $customer->name,
+                    'shipping_phone' => $customer->phone,
                     'shipping_address' => $customer->address,
+                    'shipping_fee' => config('shop.shipping_fee'),
                     'created_at' => fake()->dateTimeBetween('-60 days'),
                 ]);
 
@@ -56,7 +59,7 @@ class OrderSeeder extends Seeder
                 }
             }
 
-            $order->update(['total' => $products->sum('price')]);
+            $order->update(['total' => $products->sum('price') + config('shop.shipping_fee')]);
         }
     }
 }

@@ -79,21 +79,36 @@
                            class="inline-block rounded-md border border-stone-300 bg-white px-5 py-3 text-sm font-semibold hover:bg-stone-50">
                             Browse other {{ $product->size_label }} shoes
                         </a>
-                    @elseif (auth()->check())
-                        {{-- The cart is built in a later step. --}}
-                        <button type="button" disabled
-                                class="w-full cursor-not-allowed rounded-md bg-stone-900 px-6 py-3 font-semibold text-white opacity-60 sm:w-auto">
-                            Add to cart
-                        </button>
-                        <p class="mt-2 text-sm text-stone-500">Cart opens soon.</p>
+                    @elseif ($inCart >= $product->stock)
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="inline-flex items-center gap-2 rounded-md bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                                <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
+                                In your cart
+                            </span>
+                            <a href="{{ route('cart.index') }}" class="rounded-md bg-stone-900 px-6 py-3 font-semibold text-white hover:bg-stone-700">View cart</a>
+                        </div>
                     @else
-                        <a href="{{ route('login', ['return' => route('shop.show', $product->slug, absolute: false)]) }}"
-                           class="inline-block w-full rounded-md bg-stone-900 px-6 py-3 text-center font-semibold text-white hover:bg-stone-700 sm:w-auto">
-                            Log in to buy
-                        </a>
-                        <p class="mt-2 text-sm text-stone-600">
-                            New here? <a href="{{ route('register') }}" class="font-medium text-emerald-700 hover:underline">Create an account</a>
-                        </p>
+                        @php($canAdd = $product->stock - $inCart)
+                        <form method="POST" action="{{ route('cart.items.store') }}" class="flex flex-wrap items-end gap-3">
+                            @csrf
+                            <input type="hidden" name="product_id" value="{{ $product->id }}">
+                            @if ($canAdd > 1)
+                                <div>
+                                    <label for="quantity" class="mb-1 block text-sm text-stone-600">Quantity</label>
+                                    <select id="quantity" name="quantity" class="rounded-md border border-stone-300 bg-white px-3 py-3 text-sm">
+                                        @for ($i = 1; $i <= min($canAdd, 10); $i++)
+                                            <option value="{{ $i }}">{{ $i }}</option>
+                                        @endfor
+                                    </select>
+                                </div>
+                            @endif
+                            <button type="submit" class="w-full rounded-md bg-stone-900 px-8 py-3 font-semibold text-white hover:bg-stone-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 sm:w-auto">
+                                Add to cart
+                            </button>
+                        </form>
+                        @if ($inCart > 0)
+                            <p class="mt-2 text-sm text-stone-600">{{ $inCart }} already in <a href="{{ route('cart.index') }}" class="font-medium text-emerald-700 hover:underline">your cart</a>.</p>
+                        @endif
                     @endif
                 </div>
 

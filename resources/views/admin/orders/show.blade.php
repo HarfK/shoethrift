@@ -43,9 +43,17 @@
                             </tr>
                         @endforeach
                     </tbody>
-                    <tfoot>
+                    <tfoot class="text-sm">
                         <tr class="border-t border-stone-200">
-                            <th scope="row" colspan="3" class="px-5 py-4 text-right font-semibold">Total</th>
+                            <th scope="row" colspan="3" class="px-5 pt-4 pb-1 text-right font-normal text-stone-600">Subtotal</th>
+                            <td class="whitespace-nowrap px-5 pt-4 pb-1 text-right tabular-nums">RM {{ number_format($order->subtotal, 2) }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" colspan="3" class="px-5 py-1 text-right font-normal text-stone-600">Shipping</th>
+                            <td class="whitespace-nowrap px-5 py-1 text-right tabular-nums">RM {{ number_format($order->shipping_fee, 2) }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" colspan="3" class="px-5 pt-1 pb-4 text-right font-semibold">Total</th>
                             <td class="whitespace-nowrap px-5 py-4 text-right text-base font-semibold tabular-nums">RM {{ number_format($order->total, 2) }}</td>
                         </tr>
                     </tfoot>
@@ -81,8 +89,14 @@
             </section>
 
             <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
-                <h2 class="mb-3 text-base font-semibold">Shipping address</h2>
-                <p class="whitespace-pre-line text-sm text-stone-700">{{ $order->shipping_address }}</p>
+                <h2 class="mb-3 text-base font-semibold">Ship to</h2>
+                @if ($order->shipping_name)
+                    <p class="text-sm font-medium">{{ $order->shipping_name }}</p>
+                @endif
+                @if ($order->shipping_phone)
+                    <p class="text-sm text-stone-600">{{ $order->shipping_phone }}</p>
+                @endif
+                <p class="mt-2 whitespace-pre-line text-sm text-stone-700">{{ $order->shipping_address }}</p>
             </section>
         </div>
     </div>

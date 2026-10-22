@@ -32,7 +32,7 @@ class UserFactory extends Factory
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
             'role' => UserRole::Customer,
-            'phone' => fake()->phoneNumber(),
+            'phone' => fake()->numerify('01#-### ####'), // Malaysian mobile format, valid at checkout
             'address' => fake()->address(),
         ];
     }

@@ -24,7 +24,10 @@ class OrderFactory extends Factory
             'user_id' => User::factory(),
             'order_number' => 'TS-'.now()->format('Ymd').'-'.Str::upper(Str::random(6)),
             'total' => 0,
+            'shipping_fee' => 0,
             'status' => OrderStatus::Pending,
+            'shipping_name' => fake()->name(),
+            'shipping_phone' => fake()->numerify('01#-### ####'),
             'shipping_address' => fake()->address(),
         ];
     }

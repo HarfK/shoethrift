@@ -48,10 +48,15 @@
             </form>
 
             <div class="ml-auto flex items-center gap-1 md:ml-0">
-                {{-- The cart is built in a later step. --}}
-                <span class="flex size-9 cursor-not-allowed items-center justify-center rounded-md text-stone-400" title="Cart opens soon" aria-label="Cart (opens soon)" aria-disabled="true">
+                <a href="{{ route('cart.index') }}"
+                   class="relative flex size-9 items-center justify-center rounded-md hover:bg-stone-100"
+                   aria-label="Cart, {{ $cartCount }} {{ str('pair')->plural($cartCount) }}"
+                   @if (request()->routeIs('cart.*')) aria-current="page" @endif>
                     <svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6.2"/><circle cx="10" cy="20" r="1"/><circle cx="17" cy="20" r="1"/></svg>
-                </span>
+                    @if ($cartCount > 0)
+                        <span class="absolute -right-0.5 -top-0.5 flex min-w-4.5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[11px] font-bold leading-4.5 text-white tabular-nums" aria-hidden="true">{{ $cartCount }}</span>
+                    @endif
+                </a>
 
                 @auth
                     <details class="relative">
@@ -61,6 +66,7 @@
                         </summary>
                         <div class="absolute right-0 mt-2 w-52 rounded-lg border border-stone-200 bg-white py-1 shadow-lg">
                             <p class="truncate border-b border-stone-100 px-4 py-2 text-xs text-stone-500">{{ auth()->user()->email }}</p>
+                            <a href="{{ route('account.orders.index') }}" class="block px-4 py-2 text-sm hover:bg-stone-50">My orders</a>
                             @if (auth()->user()->isAdmin())
                                 <a href="{{ route('admin.dashboard') }}" class="block px-4 py-2 text-sm hover:bg-stone-50">Admin dashboard</a>
                             @endif
@@ -86,6 +92,25 @@
     </header>
 
     <main id="main" class="flex-1">
+        @if (session('success') || session('error') || $cartNotices)
+            <div class="mx-auto max-w-7xl space-y-2 px-4 pt-6 sm:px-6">
+                @if (session('success'))
+                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
+                        <span>{{ session('success') }}</span>
+                        @if (session('cart_added'))
+                            <a href="{{ route('cart.index') }}" class="font-semibold underline">View cart</a>
+                        @endif
+                    </div>
+                @endif
+                @if (session('error'))
+                    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{{ session('error') }}</div>
+                @endif
+                @foreach ($cartNotices as $notice)
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">{{ $notice }}</div>
+                @endforeach
+            </div>
+        @endif
+
         {{ $slot }}
     </main>
 

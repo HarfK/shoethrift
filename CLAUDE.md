@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **ShoeThrift** is a final-year project: a web-based thrift store for second-hand **shoes** (not clothing) in Malaysia, with a rule-based personalised recommendation engine. Prices are in RM, and FPX payment is planned. Recommendations must be deterministic rules: show available products with the **same UK size / same category / same brand** as the viewed product. No machine learning. Keep the code consistent with the proposal's modules (auth, profile, admin products, browse/search, recommendations, cart, checkout, order tracking, admin reports) and flag any divergence.
 
-A thrift store system built on Laravel 12 (PHP ^8.2). So far the app has the database layer, hand-written session auth, an admin area for products, categories and orders (`/admin/...`), and the public shop: home (`/`), shop listing (`/shop`) and product page (`/shop/{slug}`). Recommendations, cart, checkout and customer order history don't exist yet. The product page's "Add to cart" button is a disabled placeholder until the cart is built. The frontend tooling is Vite 7 + Tailwind CSS 4 via `laravel-vite-plugin` (`resources/css/app.css`, `resources/js/app.js`).
+A thrift store system built on Laravel 12 (PHP ^8.2). So far the app has the database layer, hand-written session auth, an admin area for products, categories and orders (`/admin/...`), and the public shop: home (`/`), shop listing (`/shop`) and product page (`/shop/{slug}`). It also has a cart (`/cart`), checkout (`/checkout`, orders are placed as Pending) and "My orders" (`/account/orders`). FPX payment, rule-based recommendations, customer-side cancel and admin reports don't exist yet. The frontend tooling is Vite 7 + Tailwind CSS 4 via `laravel-vite-plugin` (`resources/css/app.css`, `resources/js/app.js`).
 
 ## Commands
 
@@ -58,8 +58,23 @@ The tables are users → orders → order_items ← products → product_images,
 - Visibility rules: listings use `Product::available()` (status available and stock > 0). The product page uses `Product::visible()`, so sold items stay reachable with a "Sold" label and hidden ones 404. On a loaded model, use `$product->isAvailable()`.
 - `ShopController::filters()` parses the query string defensively (invalid or array values are ignored, never 500). Category filters by slug; size compares numerically against `decimal(3,1)`; use `Product::formatSize()` for size strings. Filter dropdowns only offer values that have available stock.
 - The interactive bits work without JS: mobile menu/account menu are `<details>`, the mobile filter panel is a checkbox + `peer-checked`, the gallery is a CSS scroll-snap strip with `#photo-N` anchors. The only JS is `onchange` submit on the sort select (with a `<noscript>` button).
-- "Log in to buy" links to `/login?return=/shop/{slug}`. `LoginController::create` stores it as the intended URL, but only for same-site relative paths (no `//`, no backslashes), to prevent open redirects.
+- "Log in to check out" (cart page) links to `/login?return=/cart`. `LoginController::create` stores it as the intended URL, but only for same-site relative paths (no `//`, no backslashes), to prevent open redirects.
 - Headless Chrome can't render below ~500px wide. To screenshot phone widths, load the page in a 390px `<iframe>` inside a local HTML file.
+
+## Cart
+
+- Always go through `App\Services\ShoppingCart`, never the `Cart`/`CartItem` models or the session directly. It stores guest carts in the session (`cart` key: product id => qty) and logged-in carts in `carts`/`cart_items` (matching the proposal ERD), and it caps quantities at stock.
+- The `MergeGuestCart` listener (auto-discovered, on `Login`, which also fires on registration) merges the session cart into the saved cart: a product in both keeps the larger quantity, capped at stock, and unavailable items are dropped. Logout keeps the saved cart.
+- `reconcile()` removes unavailable items and clamps quantities. It runs in the shop layout's view composer on every shop page, and the layout shows the resulting notices via `pullNotices()`. `ShoppingCart` is bound `scoped` and notices are *pulled* (cleared) so each shows once, even when the instance outlives a request (tests, Octane).
+- The cart doesn't reserve stock; checkout must re-check availability and decrement stock atomically. Cart routes take `{productId}` (not model binding) so removing a since-deleted product still works. Product deletion cascades to `cart_items`.
+
+## Checkout
+
+- `App\Services\Checkout\PlaceOrder` is the only way orders are created from a cart. In one transaction it locks the cart's products (`lockForUpdate`, ordered by id to avoid deadlocks), re-checks availability and stock, prices everything from the locked rows in integer sen, creates the order and items, reduces stock (0 → `sold`), and throws `ItemsUnavailableException` / `PriceChangedException` (which roll everything back).
+- The browser's `expected_total` is only **compared** with the server total and never used. Totals are `subtotal + shipping_fee`. The flat fee lives in `config/shop.php` and is stored on each order with `shipping_name`/`shipping_phone`; the `$order->subtotal` accessor derives the items total.
+- The real concurrency behaviour (a second buyer blocks on the row lock, then is rejected) can't be tested on in-memory SQLite. It was verified manually on MySQL with two parallel PHP processes.
+- Customers only reach orders through `$request->user()->orders()`, so another customer's order number 404s. Order numbers come from `Order::generateOrderNumber()` (`TS-YYYYMMDD-XXXXXX`, no ambiguous characters).
+- Phone validation: `CheckoutController::PHONE_PATTERN` (Malaysian formats). `UserFactory`/`OrderFactory` generate matching numbers.
 
 ## Orders and categories
 

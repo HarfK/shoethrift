@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\ProductCondition;
 use App\Models\Category;
 use App\Models\Product;
+use App\Services\ShoppingCart;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -51,7 +52,7 @@ class ShopController extends Controller
         ]);
     }
 
-    public function show(string $slug): View
+    public function show(string $slug, ShoppingCart $cart): View
     {
         // Sold products stay reachable so shared links keep working; hidden ones 404.
         $product = Product::visible()
@@ -59,7 +60,10 @@ class ShopController extends Controller
             ->with(['category', 'images' => fn ($query) => $query->orderByDesc('is_primary')->orderBy('id')])
             ->firstOrFail();
 
-        return view('shop.show', ['product' => $product]);
+        return view('shop.show', [
+            'product' => $product,
+            'inCart' => $cart->quantityOf($product),
+        ]);
     }
 
     /**
