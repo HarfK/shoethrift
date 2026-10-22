@@ -16,7 +16,8 @@ class ProductSeeder extends Seeder
     {
         $categories = Category::all();
 
-        Product::factory(36)
+        // Enough stock that OrderSeeder (at most 15 orders x 2 items) can never sell out the store.
+        Product::factory(50)
             ->recycle($categories)
             ->create()
             ->each(fn (Product $product) => $this->addImages($product));

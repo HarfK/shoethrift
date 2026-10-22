@@ -23,7 +23,7 @@ class OrderSeeder extends Seeder
         $customers = User::where('role', UserRole::Customer)->get();
 
         for ($i = 0; $i < 15; $i++) {
-            $products = Product::available()->inRandomOrder()->limit(fake()->numberBetween(1, 3))->get();
+            $products = Product::available()->inRandomOrder()->limit(fake()->numberBetween(1, 2))->get();
 
             if ($products->isEmpty()) {
                 break;
