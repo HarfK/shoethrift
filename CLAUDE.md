@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A thrift store system built on Laravel 12 (PHP ^8.2). So far the app has the database layer and hand-written session auth with an admin area. There are no storefront or admin CRUD pages yet. The frontend tooling is Vite 7 + Tailwind CSS 4 via `laravel-vite-plugin` (`resources/css/app.css`, `resources/js/app.js`).
+**ShoeThrift** is a final-year project: a web-based thrift store for second-hand **shoes** (not clothing) in Malaysia, with a rule-based personalised recommendation engine. Prices are in RM, and FPX payment is planned. Recommendations must be deterministic rules: show available products with the **same UK size / same category / same brand** as the viewed product. No machine learning. Keep the code consistent with the proposal's modules (auth, profile, admin products, browse/search, recommendations, cart, checkout, order tracking, admin reports) and flag any divergence.
+
+A thrift store system built on Laravel 12 (PHP ^8.2). So far the app has the database layer, hand-written session auth, and an admin area with product management (`/admin/products`). The storefront and the admin pages for categories and orders don't exist yet. The frontend tooling is Vite 7 + Tailwind CSS 4 via `laravel-vite-plugin` (`resources/css/app.css`, `resources/js/app.js`).
 
 ## Commands
 
@@ -36,19 +38,30 @@ The tables are users → orders → order_items ← products → product_images,
 - `users.role` is **intentionally not in `$fillable`** because it would allow privilege escalation via mass assignment. Set it explicitly instead (`$user->role = UserRole::Admin`); factories run unguarded, so the `admin()` state works.
 - `order_items.price` is the unit price at purchase time and is not linked to `products.price`. `orders.total` is stored, not computed, so keep it in sync with the items when creating orders.
 - FK delete rules: deleting a category, or a product that appears in an order, is blocked (restrict); deleting a user who has orders is also blocked. Product images and order items cascade with their parent.
+- Shoe attributes on `products`: `brand` (indexed plain string, as in the proposal's ERD; no brands table), `size` (UK size stored as `decimal(3,1)` so "same size" is an exact match; validated as 1–15 in 0.5 steps; display it with `$product->size_label`, e.g. "UK 8.5"), and an optional `color`. Product names include the brand ("Nike Air Jordan 1").
+- Seed data comes from `ProductFactory::CATALOG` ([brand, model, category] tuples). Its category names must match `CategorySeeder`: Sneakers, Running, Casual, Boots, Formal, Sandals.
 - Each product should have exactly one `is_primary` image (`Product::primaryImage()`). Use the `Product::available()` scope for buyable items (available and in stock) and `visible()` for anything not hidden.
 - Seed data: `admin@thriftstore.test` / `password` (admin) and `customer@thriftstore.test` / `password`. `OrderSeeder` decrements stock and marks products sold for non-cancelled orders.
 
 ## Auth and admin area
 
 - Auth is hand-written: no Breeze, Fortify or Jetstream, and no Alpine/React/Vue. Views are Blade + Tailwind 4. The controllers are in `app/Http/Controllers/Auth`, and login validation plus rate limiting (5 attempts per email+IP) is in `app/Http/Requests/Auth/LoginRequest.php`.
-- `LoginController::homeFor($user)` is the single source of truth for where a user lands: `/admin` for admins, `/` (`home`) for customers. It's used after login, and through `redirectUsersTo()` in `bootstrap/app.php` for signed-in users hitting guest-only pages.
-- Admin routes go in the `auth` + `admin` route group in `routes/web.php`, with names prefixed `admin.`. The `admin` middleware alias (`EnsureUserIsAdmin`, registered in `bootstrap/app.php`) returns 403 for non-admins. Sidebar links are defined at the top of `resources/views/components/layouts/admin.blade.php`, where Products, Categories and Orders are still `#` placeholders.
+- `LoginController::homeFor($user)` is the single source of truth for where a user lands: `/admin` for admins, `/` (`home`) for customers. It's used after login, and through `redirectUsersTo()` in `bootstrap/app.php` for signed-in users hitting guest-only pages. Logout redirects to `/login`, per the proposal's test plan.
+- Admin routes go in the `auth` + `admin` route group in `routes/web.php`, with names prefixed `admin.`. The `admin` middleware alias (`EnsureUserIsAdmin`, registered in `bootstrap/app.php`) returns 403 for non-admins. Sidebar links are defined at the top of `resources/views/components/layouts/admin.blade.php`, where Categories and Orders are still `#` placeholders.
 - Pages use anonymous component layouts: `<x-layouts.guest>` (auth card) and `<x-layouts.admin>` (sidebar). Forms use `<x-form.field>` (label + input + error) and `<x-button>`. The `<head>` is shared via `partials/head`.
 - `MAIL_MAILER=log`: password-reset emails are written to `storage/logs/laravel.log`. The reset route must stay named `password.reset`, because Laravel's reset notification links to it.
-- `tests/TestCase.php` calls `withoutVite()`, so feature tests don't need built assets. Running the app in a browser does: use `npm run dev` or `npm run build`.
+- Admin CRUD pattern (see `Admin/ProductController`): a resource controller; Form Requests in `app/Http/Requests/Admin` with shared rules in an abstract base (`ProductRequest`); a shared `_form` partial for create/edit; `<x-form.select>` for enum and relation dropdowns; `back()->with('success'|'error', ...)` for flash banners, which the admin layout renders. Enums expose `label()` for display.
+
+## Product images
+
+- Files go on the `public` disk under `products/{product_id}/`; `public/storage` is linked via `php artisan storage:link`. Build URLs with `ProductImage->url`, which uses `asset()` so it ignores `APP_URL` and returns null when the file is missing (the seeded image paths are placeholders with no files).
+- Always call `Product::ensurePrimaryImage($preferredId)` after adding or removing images; it maintains the "exactly one primary" invariant. Slugs come from `Product::uniqueSlug($name, $ignoreId)` and are regenerated only when the name changes.
+- File/DB consistency: new uploads are stored inside the transaction and deleted if it fails; removed files are deleted only after the DB change commits.
+- Deleting a product that has order items is refused with a flash error (and the `order_items` FK restricts it anyway). Hiding a product is the alternative.
+- PHP here (XAMPP) has no GD extension, so tests must use `UploadedFile::fake()->create('x.jpg', 100, 'image/jpeg')`, not `fake()->image()`.
 
 ## Conventions
 
+- `tests/TestCase.php` calls `withoutVite()`, so feature tests don't need built assets. Running the app in a browser does: use `npm run dev` or `npm run build`.
 - Models use the Laravel 12 style: a `casts()` method instead of a `$casts` property, plus `HasFactory` with a `@use HasFactory<XFactory>` docblock (see `app/Models/User.php`).
 - Factories live in `database/factories` and seeders in `database/seeders`. `DatabaseSeeder` is the entry point for `db:seed`.

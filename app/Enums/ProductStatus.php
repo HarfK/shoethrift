@@ -7,4 +7,9 @@ enum ProductStatus: string
     case Available = 'available';
     case Sold = 'sold';
     case Hidden = 'hidden';
+
+    public function label(): string
+    {
+        return ucfirst($this->value);
+    }
 }

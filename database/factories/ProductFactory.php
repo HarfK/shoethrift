@@ -15,24 +15,64 @@ use Illuminate\Support\Str;
 class ProductFactory extends Factory
 {
     /**
+     * Realistic thrift stock: [brand, model, category name]. CategorySeeder creates these categories.
+     *
+     * @var list<array{0: string, 1: string, 2: string}>
+     */
+    public const CATALOG = [
+        ['Nike', 'Air Jordan 1', 'Sneakers'],
+        ['Nike', 'Air Force 1', 'Sneakers'],
+        ['Nike', 'Dunk Low', 'Sneakers'],
+        ['Nike', 'Pegasus 40', 'Running'],
+        ['Nike', 'Blazer Mid 77', 'Casual'],
+        ['Adidas', 'Ultraboost', 'Running'],
+        ['Adidas', 'Superstar', 'Sneakers'],
+        ['Adidas', 'Samba OG', 'Casual'],
+        ['Adidas', 'Stan Smith', 'Casual'],
+        ['Vans', 'Old Skool', 'Casual'],
+        ['Vans', 'Sk8-Hi', 'Sneakers'],
+        ['Converse', 'Chuck Taylor All Star', 'Casual'],
+        ['Converse', 'Chuck 70', 'Casual'],
+        ['New Balance', '327', 'Sneakers'],
+        ['New Balance', '550', 'Sneakers'],
+        ['New Balance', 'Fresh Foam 1080', 'Running'],
+        ['Puma', 'RS-X', 'Sneakers'],
+        ['Puma', 'Suede Classic', 'Casual'],
+        ['Asics', 'Gel-Kayano 30', 'Running'],
+        ['Asics', 'Gel-Lyte III', 'Sneakers'],
+        ['Dr. Martens', '1460 Boot', 'Boots'],
+        ['Timberland', '6-Inch Premium Boot', 'Boots'],
+        ['Clarks', 'Desert Boot', 'Boots'],
+        ['Dr. Martens', '1461 Oxford', 'Formal'],
+        ['Clarks', 'Tilden Cap Oxford', 'Formal'],
+        ['Birkenstock', 'Arizona', 'Sandals'],
+        ['Crocs', 'Classic Clog', 'Sandals'],
+    ];
+
+    /**
      * Define the model's default state.
      *
      * @return array<string, mixed>
      */
     public function definition(): array
     {
-        $name = Str::title(fake()->randomElement(['vintage', 'retro', 'classic', 'oversized', 'faded', 'cropped'])
-            .' '.fake()->colorName()
-            .' '.fake()->randomElement(['shirt', 'jacket', 'jeans', 'dress', 'sweater', 'boots', 'bag', 'scarf']));
+        [$brand, $model] = fake()->randomElement(self::CATALOG);
 
         return [
             'category_id' => Category::factory(),
-            'name' => $name,
-            'slug' => Str::slug($name).'-'.Str::lower(Str::random(6)),
-            'description' => fake()->paragraph(),
-            'price' => fake()->randomFloat(2, 5, 150),
+            'brand' => $brand,
+            'name' => "{$brand} {$model}",
+            'slug' => fn (array $attributes) => Str::slug($attributes['name']).'-'.Str::lower(Str::random(6)),
+            'description' => fake()->randomElement([
+                'Pre-loved pair, cleaned and inspected.',
+                'Light signs of wear on the sole; upper in great shape.',
+                'Original laces and insoles. No box.',
+                'Minor creasing on the toe box, otherwise clean.',
+            ]),
+            'price' => fake()->numberBetween(5, 45) * 10,
             'condition' => fake()->randomElement(ProductCondition::cases()),
-            'size' => fake()->randomElement(['XS', 'S', 'M', 'L', 'XL', 'One Size']),
+            'size' => fake()->randomElement(range(3, 12, 0.5)),
+            'color' => fake()->randomElement(['Black', 'White', 'Black/White', 'Red/White/Black', 'Navy', 'Grey', 'Beige', 'Brown', 'Green/White']),
             'stock' => 1,
             'status' => ProductStatus::Available,
         ];

@@ -9,17 +9,17 @@ use Illuminate\Support\Str;
 class CategorySeeder extends Seeder
 {
     /**
-     * Seed the store's product categories.
+     * Seed the store's shoe categories. Names must match ProductFactory::CATALOG.
      */
     public function run(): void
     {
         $categories = [
-            'Tops' => 'T-shirts, blouses, shirts and knitwear.',
-            'Outerwear' => 'Jackets, coats and blazers for every season.',
-            'Denim' => 'Pre-loved jeans, denim jackets and skirts.',
-            'Dresses' => 'Casual, vintage and occasion dresses.',
-            'Shoes' => 'Sneakers, boots, sandals and heels.',
-            'Accessories' => 'Bags, scarves, belts and jewellery.',
+            'Sneakers' => 'Lifestyle and basketball-inspired sneakers.',
+            'Running' => 'Running and training shoes.',
+            'Casual' => 'Everyday canvas, suede and low-top shoes.',
+            'Boots' => 'Leather boots and work boots.',
+            'Formal' => 'Oxfords and dress shoes.',
+            'Sandals' => 'Sandals, slides and clogs.',
         ];
 
         foreach ($categories as $name => $description) {

@@ -8,7 +8,7 @@
 <body class="min-h-screen bg-stone-50 font-sans text-stone-900 antialiased">
     <div class="flex min-h-screen flex-col items-center justify-center px-4 py-12">
         <a href="{{ route('home') }}" class="mb-8 text-2xl font-semibold tracking-tight">
-            {{ config('app.name', 'Thrift Store') }}
+            {{ config('app.name', 'ShoeThrift') }}
         </a>
 
         <div class="w-full max-w-md rounded-xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">

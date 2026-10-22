@@ -1,10 +1,10 @@
 @props(['title' => null])
 
 @php
-    // Products, Categories and Orders are placeholders until their admin pages exist.
+    // Categories and Orders are placeholders until their admin pages exist.
     $links = [
         ['label' => 'Dashboard', 'href' => route('admin.dashboard'), 'active' => request()->routeIs('admin.dashboard')],
-        ['label' => 'Products', 'href' => '#', 'active' => false],
+        ['label' => 'Products', 'href' => route('admin.products.index'), 'active' => request()->routeIs('admin.products.*')],
         ['label' => 'Categories', 'href' => '#', 'active' => false],
         ['label' => 'Orders', 'href' => '#', 'active' => false],
     ];
@@ -20,7 +20,7 @@
         <aside class="flex shrink-0 flex-col border-b border-stone-800 bg-stone-900 text-stone-300 md:w-60 md:border-b-0 md:border-r">
             <div class="flex items-center justify-between px-5 py-4 md:block">
                 <a href="{{ route('admin.dashboard') }}" class="text-lg font-semibold text-white">
-                    {{ config('app.name', 'Thrift Store') }}
+                    {{ config('app.name', 'ShoeThrift') }}
                 </a>
                 <p class="text-xs uppercase tracking-wider text-stone-500 md:mt-1">Admin</p>
             </div>
@@ -47,7 +47,19 @@
             </div>
         </aside>
 
-        <main class="flex-1 px-4 py-6 sm:px-8 sm:py-8">
+        <main class="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-8">
+            @if (session('success'))
+                <div class="mb-6 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            @if (session('error'))
+                <div class="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+                    {{ session('error') }}
+                </div>
+            @endif
+
             {{ $slot }}
 
             {{-- On small screens the sidebar footer is hidden, so offer logout here. --}}

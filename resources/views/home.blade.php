@@ -7,7 +7,7 @@
     <header class="border-b border-stone-200 bg-white">
         <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
             <a href="{{ route('home') }}" class="text-lg font-semibold tracking-tight">
-                {{ config('app.name', 'Thrift Store') }}
+                {{ config('app.name', 'ShoeThrift') }}
             </a>
 
             <nav class="flex items-center gap-4 text-sm">
@@ -29,8 +29,9 @@
     </header>
 
     <main class="mx-auto max-w-6xl px-4 py-16">
-        <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Pre-loved finds, fair prices.</h1>
-        <p class="mt-3 max-w-xl text-stone-600">The storefront is coming soon.</p>
+        <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Discover Premium Thrift Shoes in Malaysia</h1>
+        <p class="mt-3 max-w-xl text-stone-600">Buy authentic second-hand shoes with ease. Find your favourite sneakers at affordable prices.</p>
+        <p class="mt-6 text-sm text-stone-500">The shop is coming soon.</p>
     </main>
 </body>
 </html>
