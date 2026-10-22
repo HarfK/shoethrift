@@ -1,12 +1,11 @@
 @props(['title' => null])
 
 @php
-    // Categories and Orders are placeholders until their admin pages exist.
     $links = [
         ['label' => 'Dashboard', 'href' => route('admin.dashboard'), 'active' => request()->routeIs('admin.dashboard')],
         ['label' => 'Products', 'href' => route('admin.products.index'), 'active' => request()->routeIs('admin.products.*')],
-        ['label' => 'Categories', 'href' => '#', 'active' => false],
-        ['label' => 'Orders', 'href' => '#', 'active' => false],
+        ['label' => 'Categories', 'href' => route('admin.categories.index'), 'active' => request()->routeIs('admin.categories.*')],
+        ['label' => 'Orders', 'href' => route('admin.orders.index'), 'active' => request()->routeIs('admin.orders.*')],
     ];
 @endphp
 

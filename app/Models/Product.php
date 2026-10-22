@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ProductCondition;
 use App\Enums\ProductStatus;
+use App\Models\Concerns\HasUniqueSlug;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
@@ -13,12 +14,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Support\Str;
 
 class Product extends Model
 {
     /** @use HasFactory<ProductFactory> */
-    use HasFactory;
+    use HasFactory, HasUniqueSlug;
 
     /**
      * The attributes that are mass assignable.
@@ -95,21 +95,6 @@ class Product extends Model
     public function orderItems(): HasMany
     {
         return $this->hasMany(OrderItem::class);
-    }
-
-    /**
-     * Build a slug from the name that no other product uses ("denim-jacket", then "denim-jacket-2", ...).
-     */
-    public static function uniqueSlug(string $name, ?int $ignoreId = null): string
-    {
-        $base = Str::slug($name) ?: 'product';
-        $slug = $base;
-
-        for ($i = 2; static::where('slug', $slug)->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))->exists(); $i++) {
-            $slug = $base.'-'.$i;
-        }
-
-        return $slug;
     }
 
     /**
