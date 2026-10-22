@@ -12,8 +12,16 @@ use Illuminate\View\View;
 
 class LoginController extends Controller
 {
-    public function create(): View
+    public function create(Request $request): View
     {
+        // "Log in to buy" links pass ?return=/shop/{slug} so the shopper comes back afterwards.
+        // Only same-site relative paths are accepted, to avoid an open redirect.
+        $return = $request->query('return');
+
+        if (is_string($return) && str_starts_with($return, '/') && ! str_starts_with($return, '//') && ! str_contains($return, '\\')) {
+            $request->session()->put('url.intended', url($return));
+        }
+
         return view('auth.login');
     }
 

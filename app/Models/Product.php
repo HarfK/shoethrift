@@ -62,7 +62,23 @@ class Product extends Model
      */
     protected function sizeLabel(): Attribute
     {
-        return Attribute::get(fn () => 'UK '.rtrim(rtrim((string) $this->size, '0'), '.'));
+        return Attribute::get(fn () => 'UK '.static::formatSize($this->size));
+    }
+
+    /**
+     * "8.0" → "8", "8.5" → "8.5". Works on raw DB values too (e.g. distinct sizes for filters).
+     */
+    public static function formatSize(float|string $size): string
+    {
+        return rtrim(rtrim(number_format((float) $size, 1, '.', ''), '0'), '.');
+    }
+
+    /**
+     * Same rule as the available() scope, for a loaded model.
+     */
+    public function isAvailable(): bool
+    {
+        return $this->status === ProductStatus::Available && $this->stock > 0;
     }
 
     /**

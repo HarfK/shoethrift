@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **ShoeThrift** is a final-year project: a web-based thrift store for second-hand **shoes** (not clothing) in Malaysia, with a rule-based personalised recommendation engine. Prices are in RM, and FPX payment is planned. Recommendations must be deterministic rules: show available products with the **same UK size / same category / same brand** as the viewed product. No machine learning. Keep the code consistent with the proposal's modules (auth, profile, admin products, browse/search, recommendations, cart, checkout, order tracking, admin reports) and flag any divergence.
 
-A thrift store system built on Laravel 12 (PHP ^8.2). So far the app has the database layer, hand-written session auth, and an admin area for products, categories and orders (`/admin/...`). The customer storefront (browse, recommendations, cart, checkout, order history) doesn't exist yet. The frontend tooling is Vite 7 + Tailwind CSS 4 via `laravel-vite-plugin` (`resources/css/app.css`, `resources/js/app.js`).
+A thrift store system built on Laravel 12 (PHP ^8.2). So far the app has the database layer, hand-written session auth, an admin area for products, categories and orders (`/admin/...`), and the public shop: home (`/`), shop listing (`/shop`) and product page (`/shop/{slug}`). Recommendations, cart, checkout and customer order history don't exist yet. The product page's "Add to cart" button is a disabled placeholder until the cart is built. The frontend tooling is Vite 7 + Tailwind CSS 4 via `laravel-vite-plugin` (`resources/css/app.css`, `resources/js/app.js`).
 
 ## Commands
 
@@ -51,6 +51,15 @@ The tables are users → orders → order_items ← products → product_images,
 - Pages use anonymous component layouts: `<x-layouts.guest>` (auth card) and `<x-layouts.admin>` (sidebar). Forms use `<x-form.field>` (label + input + error) and `<x-button>`. The `<head>` is shared via `partials/head`.
 - `MAIL_MAILER=log`: password-reset emails are written to `storage/logs/laravel.log`. The reset route must stay named `password.reset`, because Laravel's reset notification links to it.
 - Admin CRUD pattern (see `Admin/ProductController`): a resource controller; Form Requests in `app/Http/Requests/Admin` with shared rules in an abstract base (`ProductRequest`); a shared `_form` partial for create/edit; `<x-form.select>` for enum and relation dropdowns; `back()->with('success'|'error', ...)` for flash banners, which the admin layout renders. Enums expose `label()` for display.
+
+## Public shop
+
+- Public pages use `<x-layouts.shop>` (header with search, cart icon and account `<details>` menu; footer). Its footer categories come from a view composer in `AppServiceProvider`. Products render with `<x-product-card>`, and `<x-shoe-placeholder>` is shown when there is no photo.
+- Visibility rules: listings use `Product::available()` (status available and stock > 0). The product page uses `Product::visible()`, so sold items stay reachable with a "Sold" label and hidden ones 404. On a loaded model, use `$product->isAvailable()`.
+- `ShopController::filters()` parses the query string defensively (invalid or array values are ignored, never 500). Category filters by slug; size compares numerically against `decimal(3,1)`; use `Product::formatSize()` for size strings. Filter dropdowns only offer values that have available stock.
+- The interactive bits work without JS: mobile menu/account menu are `<details>`, the mobile filter panel is a checkbox + `peer-checked`, the gallery is a CSS scroll-snap strip with `#photo-N` anchors. The only JS is `onchange` submit on the sort select (with a `<noscript>` button).
+- "Log in to buy" links to `/login?return=/shop/{slug}`. `LoginController::create` stores it as the intended URL, but only for same-site relative paths (no `//`, no backslashes), to prevent open redirects.
+- Headless Chrome can't render below ~500px wide. To screenshot phone widths, load the page in a 390px `<iframe>` inside a local HTML file.
 
 ## Orders and categories
 
