@@ -1,4 +1,4 @@
-@php($hasFilters = $filters['search'] !== '' || $filters['status'])
+@php($hasFilters = $filters['search'] !== '' || $filters['status'] || $filters['payment'])
 
 <x-layouts.admin title="Orders">
     <div>
@@ -21,6 +21,15 @@
                 @endforeach
             </select>
         </div>
+        <div class="w-full sm:w-52">
+            <label for="payment" class="mb-1 block text-sm font-medium text-stone-700">Payment</label>
+            <select id="payment" name="payment" class="block w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm">
+                <option value="">All payment methods</option>
+                @foreach ($paymentMethods as $method)
+                    <option value="{{ $method->value }}" @selected($filters['payment'] === $method->value)>{{ $method->label() }}</option>
+                @endforeach
+            </select>
+        </div>
         <div class="flex gap-2">
             <button type="submit" class="rounded-md bg-stone-800 px-4 py-2 text-sm font-medium text-white hover:bg-stone-900">Filter</button>
             @if ($hasFilters)
@@ -38,6 +47,7 @@
                     <th scope="col" class="px-4 py-3">Date</th>
                     <th scope="col" class="px-4 py-3 text-right">Items</th>
                     <th scope="col" class="px-4 py-3 text-right">Total</th>
+                    <th scope="col" class="px-4 py-3">Payment</th>
                     <th scope="col" class="px-4 py-3">Status</th>
                 </tr>
             </thead>
@@ -54,11 +64,15 @@
                         <td class="whitespace-nowrap px-4 py-3 text-stone-600">{{ $order->created_at->format('j M Y, g:i a') }}</td>
                         <td class="px-4 py-3 text-right tabular-nums">{{ $order->items_count }}</td>
                         <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">RM {{ number_format($order->total, 2) }}</td>
+                        <td class="whitespace-nowrap px-4 py-3 text-stone-600">
+                            {{ match ($order->payment_method?->value) { 'online' => 'Online', 'cod' => 'COD', default => '—' } }}
+                            @if ($order->needsRefund())<span class="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-800">Refund</span>@endif
+                        </td>
                         <td class="px-4 py-3"><x-order-status-badge :status="$order->status" /></td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="px-4 py-12 text-center text-stone-500">
+                        <td colspan="7" class="px-4 py-12 text-center text-stone-500">
                             {{ $hasFilters ? 'No orders match your filters.' : 'No orders yet.' }}
                         </td>
                     </tr>

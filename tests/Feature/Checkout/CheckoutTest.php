@@ -50,6 +50,7 @@ class CheckoutTest extends TestCase
             'shipping_phone' => '012-345 6789',
             'shipping_address' => "12 Jalan Bunga\n40100 Shah Alam, Selangor",
             'expected_total' => $this->expectedTotal(),
+            'payment_method' => 'cod', // online payment is covered in HitPayPaymentTest
             ...$overrides,
         ]);
     }
@@ -321,7 +322,8 @@ class CheckoutTest extends TestCase
             ->assertOk()
             ->assertSee(['Thank you! Your order has been placed.', $order->order_number, 'Nike Dunk Low', 'RM 310.00'])
             ->assertSee(['Aisyah Rahman', '012-345 6789', '12 Jalan Bunga'])
-            ->assertSee('Pending, awaiting payment.');
+            ->assertSee('Cash on Delivery.')
+            ->assertSee('Please have RM 310.00 ready when your shoes arrive.');
     }
 
     public function test_admin_sees_the_recipient_and_shipping_fee(): void

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\OrderStatus;
+use App\Enums\PaymentMethod;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateOrderStatusRequest;
 use App\Models\Order;
@@ -19,6 +20,7 @@ class OrderController extends Controller
     {
         $search = $request->string('search')->trim()->toString();
         $status = OrderStatus::tryFrom($request->string('status')->toString());
+        $payment = PaymentMethod::tryFrom($request->string('payment')->toString());
 
         $orders = Order::query()
             ->with('user')
@@ -29,6 +31,7 @@ class OrderController extends Controller
                     ->where('name', 'like', '%'.$search.'%')
                     ->orWhere('email', 'like', '%'.$search.'%'))))
             ->when($status, fn ($query) => $query->where('status', $status))
+            ->when($payment, fn ($query) => $query->where('payment_method', $payment))
             ->latest()
             ->latest('id')
             ->paginate(self::PER_PAGE)
@@ -37,7 +40,8 @@ class OrderController extends Controller
         return view('admin.orders.index', [
             'orders' => $orders,
             'statuses' => OrderStatus::cases(),
-            'filters' => ['search' => $search, 'status' => $status?->value],
+            'paymentMethods' => PaymentMethod::cases(),
+            'filters' => ['search' => $search, 'status' => $status?->value, 'payment' => $payment?->value],
         ]);
     }
 

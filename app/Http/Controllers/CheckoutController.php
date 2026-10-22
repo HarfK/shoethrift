@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\PaymentMethod;
 use App\Models\Order;
 use App\Services\Checkout\ItemsUnavailableException;
 use App\Services\Checkout\PlaceOrder;
 use App\Services\Checkout\PriceChangedException;
+use App\Services\Payments\StartHitPayPayment;
 use App\Services\ShoppingCart;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class CheckoutController extends Controller
@@ -39,17 +42,20 @@ class CheckoutController extends Controller
         ]);
     }
 
-    public function store(Request $request, ShoppingCart $cart, PlaceOrder $placeOrder): RedirectResponse
+    public function store(Request $request, ShoppingCart $cart, PlaceOrder $placeOrder, StartHitPayPayment $startPayment): RedirectResponse
     {
         $data = $request->validate([
             'shipping_name' => ['required', 'string', 'max:100'],
             'shipping_phone' => ['required', 'string', 'max:30', 'regex:'.self::PHONE_PATTERN],
             'shipping_address' => ['required', 'string', 'min:10', 'max:500'],
+            'payment_method' => ['required', Rule::enum(PaymentMethod::class)],
             'save_details' => ['nullable', 'boolean'],
             'expected_total' => ['required', 'numeric'],
         ], [
             'shipping_phone.regex' => 'Enter a Malaysian phone number, e.g. 012-345 6789.',
+            'payment_method.required' => 'Choose how you want to pay.',
         ]);
+        $paymentMethod = PaymentMethod::from($data['payment_method']);
 
         $quantities = $cart->quantities();
 
@@ -68,6 +74,7 @@ class CheckoutController extends Controller
                     'shipping_address' => trim($data['shipping_address']),
                 ],
                 (string) $data['expected_total'],
+                $paymentMethod,
             );
         } catch (ItemsUnavailableException $e) {
             // Drop what's gone (and clamp quantities) so the customer reviews an accurate cart.
@@ -91,6 +98,16 @@ class CheckoutController extends Controller
                 'phone' => $order->shipping_phone,
                 'address' => $order->shipping_address,
             ]);
+        }
+
+        if ($paymentMethod === PaymentMethod::Online) {
+            // The order (and its stock) is saved first; only then do we call HitPay.
+            $paymentUrl = $startPayment->handle($order);
+
+            return $paymentUrl
+                ? redirect()->away($paymentUrl)
+                : redirect()->route('account.orders.show', $order->order_number)
+                    ->with('error', "Your order {$order->order_number} is saved, but we couldn't start the online payment. Please try again below.");
         }
 
         return redirect()->route('checkout.complete', $order->order_number);

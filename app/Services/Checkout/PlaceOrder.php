@@ -3,6 +3,7 @@
 namespace App\Services\Checkout;
 
 use App\Enums\OrderStatus;
+use App\Enums\PaymentMethod;
 use App\Enums\ProductStatus;
 use App\Models\Order;
 use App\Models\Product;
@@ -29,9 +30,9 @@ class PlaceOrder
      * @throws ItemsUnavailableException
      * @throws PriceChangedException
      */
-    public function handle(User $user, array $quantities, array $shipping, string $expectedTotal): Order
+    public function handle(User $user, array $quantities, array $shipping, string $expectedTotal, PaymentMethod $paymentMethod): Order
     {
-        return DB::transaction(function () use ($user, $quantities, $shipping, $expectedTotal) {
+        return DB::transaction(function () use ($user, $quantities, $shipping, $expectedTotal, $paymentMethod) {
             $products = Product::query()
                 ->whereIn('id', array_keys($quantities))
                 ->orderBy('id')
@@ -70,6 +71,11 @@ class PlaceOrder
                 'status' => OrderStatus::Pending,
                 'total' => self::fromSen($totalSen),
                 'shipping_fee' => self::fromSen($shippingSen),
+                'payment_method' => $paymentMethod,
+                // Online orders hold their stock only for the payment window (see orders:expire-unpaid).
+                'payment_expires_at' => $paymentMethod === PaymentMethod::Online
+                    ? now()->addMinutes((int) config('services.hitpay.payment_window_minutes'))
+                    : null,
                 ...$shipping,
             ]);
 

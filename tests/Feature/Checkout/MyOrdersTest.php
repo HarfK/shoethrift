@@ -81,7 +81,7 @@ class MyOrdersTest extends TestCase
         $order = $this->orderFor($this->aisyah, 'TS-20261022-CANCEL', OrderStatus::Cancelled);
 
         $this->actingAs($this->aisyah)->get(route('account.orders.show', $order->order_number))
-            ->assertSee('This order was cancelled.')
+            ->assertSee('This order was cancelled and its pairs were returned to the shop.')
             ->assertDontSee('aria-label="Order progress"', false);
     }
 

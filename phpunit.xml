@@ -32,5 +32,11 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- Fake HitPay credentials: tests never use real keys (and real HTTP is blocked in TestCase). -->
+        <env name="HITPAY_API_KEY" value="test-api-key"/>
+        <env name="HITPAY_SALT" value="test-webhook-salt"/>
+        <env name="HITPAY_API_URL" value="https://api.sandbox.hit-pay.com"/>
+        <env name="HITPAY_CURRENCY" value="MYR"/>
+        <env name="HITPAY_PAYMENT_WINDOW_MINUTES" value="30"/>
     </php>
 </phpunit>

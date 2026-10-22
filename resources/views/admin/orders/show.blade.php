@@ -1,4 +1,5 @@
-@php($transitions = $order->status->allowedTransitions())
+@use('App\Enums\PaymentMethod')
+@php($transitions = $order->allowedTransitions())
 
 <x-layouts.admin :title="'Order '.$order->order_number">
     <a href="{{ route('admin.orders.index') }}" class="text-sm text-stone-600 hover:underline">&larr; Orders</a>
@@ -7,6 +8,14 @@
         <x-order-status-badge :status="$order->status" />
     </div>
     <p class="-mt-4 mb-6 text-sm text-stone-500">Placed {{ $order->created_at->format('j M Y, g:i a') }}</p>
+
+    @if ($order->needsRefund())
+        <div class="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+            <strong>Payment received after the order was {{ strtolower($order->status->label()) }}, refund needed.</strong>
+            HitPay confirmed a payment of RM {{ number_format($order->total, 2) }} on {{ $order->paid_at->format('j M Y, g:i a') }}
+            (payment request {{ $order->gateway_reference }}). Refund it from the HitPay dashboard.
+        </div>
+    @endif
 
     <div class="grid gap-6 lg:grid-cols-3">
         <section class="rounded-xl border border-stone-200 bg-white shadow-sm lg:col-span-2">
@@ -75,8 +84,49 @@
                                        :options="collect($transitions)->mapWithKeys(fn ($s) => [$s->value => $s->label()])" />
                         <button type="submit" class="w-full rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Update status</button>
                     </form>
-                    <p class="mt-3 text-xs text-stone-500">Orders move pending → paid → shipped → completed, and can be cancelled only before shipping.</p>
+                    <p class="mt-3 text-xs text-stone-500">
+                        @if ($order->payment_method === PaymentMethod::Online)
+                            Online orders become <strong>paid</strong> only when HitPay confirms the payment. Then paid → shipped → completed.
+                        @elseif ($order->payment_method === PaymentMethod::CashOnDelivery)
+                            Cash on Delivery: pending → shipped → completed (completed = cash collected). Cancel only before shipping.
+                        @else
+                            Orders move pending → paid → shipped → completed, and can be cancelled only before shipping.
+                        @endif
+                    </p>
                 @endif
+            </section>
+
+            <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+                <h2 class="mb-3 text-base font-semibold">Payment</h2>
+                <dl class="space-y-2 text-sm">
+                    <div>
+                        <dt class="text-stone-500">Method</dt>
+                        <dd class="font-medium">{{ $order->payment_method?->label() ?? 'Not recorded (older order)' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-stone-500">Paid</dt>
+                        <dd>{{ $order->paid_at ? $order->paid_at->format('j M Y, g:i a') : 'Not paid yet' }}</dd>
+                    </div>
+                    @if ($order->payment_method === PaymentMethod::Online)
+                        <div>
+                            <dt class="text-stone-500">HitPay payment request</dt>
+                            <dd class="break-all font-mono text-xs">{{ $order->gateway_reference ?? '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-stone-500">HitPay payment ID</dt>
+                            <dd class="break-all font-mono text-xs">{{ $order->gateway_payment_id ?? '—' }}</dd>
+                            @if ($order->isSimulatedPayment())
+                                <dd class="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900">Simulated test payment (local only), not real money</dd>
+                            @endif
+                        </div>
+                        @if (! $order->paid_at && $order->payment_expires_at)
+                            <div>
+                                <dt class="text-stone-500">Payment deadline</dt>
+                                <dd>{{ $order->payment_expires_at->format('j M Y, g:i a') }}</dd>
+                            </div>
+                        @endif
+                    @endif
+                </dl>
             </section>
 
             <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">

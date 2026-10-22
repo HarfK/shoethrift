@@ -7,6 +7,7 @@
         'shipped' => 'bg-indigo-50 text-indigo-800 ring-indigo-600/20',
         'completed' => 'bg-emerald-50 text-emerald-800 ring-emerald-600/20',
         'cancelled' => 'bg-stone-100 text-stone-600 ring-stone-500/20',
+        'failed' => 'bg-red-50 text-red-800 ring-red-600/20',
     ][$status->value];
 @endphp
 

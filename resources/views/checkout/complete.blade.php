@@ -8,9 +8,15 @@
             <p class="mt-2 text-stone-600">Order number <span class="font-semibold text-stone-900">{{ $order->order_number }}</span></p>
         </div>
 
-        <div class="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <p><strong>Pending, awaiting payment.</strong> Online payment (FPX) is coming soon. We're holding these pairs for you until then.</p>
-        </div>
+        @if ($order->payment_method === \App\Enums\PaymentMethod::Online && ! $order->paid_at)
+            <div class="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p><strong>Awaiting payment.</strong> <a href="{{ route('account.orders.show', $order->order_number) }}" class="font-semibold underline">Complete your payment</a> within {{ config('services.hitpay.payment_window_minutes') }} minutes to keep these pairs.</p>
+            </div>
+        @else
+            <div class="mt-8 rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-700">
+                <p><strong>Cash on Delivery.</strong> Please have RM {{ number_format($order->total, 2) }} ready when your shoes arrive.</p>
+            </div>
+        @endif
 
         <x-order-summary :order="$order" class="mt-6" />
 

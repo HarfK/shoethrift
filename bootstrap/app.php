@@ -14,6 +14,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // ngrok (and similar local tunnels) forward HTTPS traffic to `php artisan serve` from this machine,
+        // adding X-Forwarded-Proto/Host. Trusting only loopback lets Laravel generate https://<tunnel>/
+        // links, while nobody else can spoof those headers. Add your proxy's IP here if you deploy behind one.
+        $middleware->trustProxies(at: ['127.0.0.1', '::1']);
+
+        // HitPay posts webhooks without a CSRF token; they're authenticated by HMAC signature instead.
+        $middleware->validateCsrfTokens(except: ['webhooks/hitpay']);
+
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,
         ]);

@@ -42,10 +42,29 @@
                     <span>Save this phone number and address to my profile for next time</span>
                 </label>
 
-                <div class="mt-6 rounded-lg bg-stone-50 p-4 text-sm text-stone-600">
-                    <p class="font-medium text-stone-900">Payment</p>
-                    <p class="mt-1">Your order is placed as <strong>Pending</strong>. Online payment (FPX) is coming soon, and we'll hold your order until it's paid.</p>
-                </div>
+                <fieldset class="mt-6">
+                    <legend class="text-lg font-semibold">Payment</legend>
+                    @php($selectedMethod = old('payment_method', 'online'))
+                    <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                        <label class="flex cursor-pointer gap-3 rounded-lg border border-stone-300 p-4 has-checked:border-stone-900 has-checked:ring-1 has-checked:ring-stone-900 has-focus-visible:ring-2 has-focus-visible:ring-emerald-600">
+                            <input type="radio" name="payment_method" value="online" class="mt-1 text-stone-900" @checked($selectedMethod === 'online')>
+                            <span class="text-sm">
+                                <span class="block font-semibold">Pay online</span>
+                                <span class="mt-0.5 block text-stone-600">Card or e-wallet through HitPay's secure checkout. Pay within {{ config('services.hitpay.payment_window_minutes') }} minutes to keep your pairs.</span>
+                            </span>
+                        </label>
+                        <label class="flex cursor-pointer gap-3 rounded-lg border border-stone-300 p-4 has-checked:border-stone-900 has-checked:ring-1 has-checked:ring-stone-900 has-focus-visible:ring-2 has-focus-visible:ring-emerald-600">
+                            <input type="radio" name="payment_method" value="cod" class="mt-1 text-stone-900" @checked($selectedMethod === 'cod')>
+                            <span class="text-sm">
+                                <span class="block font-semibold">Cash on Delivery</span>
+                                <span class="mt-0.5 block text-stone-600">Pay in cash when your shoes arrive.</span>
+                            </span>
+                        </label>
+                    </div>
+                    @error('payment_method')
+                        <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
+                    @enderror
+                </fieldset>
             </section>
 
             <aside class="h-fit rounded-xl border border-stone-200 bg-white p-5 lg:sticky lg:top-24" aria-label="Order summary">

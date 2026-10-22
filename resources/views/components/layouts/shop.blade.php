@@ -12,11 +12,13 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     @include('partials.head', ['title' => $title])
+    {{-- Pages can add head tags (e.g. the order page's auto-refresh) with @push('head'). --}}
+    @stack('head')
 </head>
-<body class="flex min-h-screen flex-col bg-stone-50 font-sans text-stone-900 antialiased">
-    <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:shadow">Skip to content</a>
+<body class="flex min-h-screen flex-col bg-stone-50 font-sans text-stone-900 antialiased print:bg-white">
+    <a href="#main" class="print:hidden sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:shadow">Skip to content</a>
 
-    <header class="sticky top-0 z-40 border-b border-stone-200 bg-white/95 backdrop-blur">
+    <header class="sticky top-0 z-40 border-b border-stone-200 bg-white/95 backdrop-blur print:hidden">
         <div class="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
             {{-- Mobile menu (no JS: <details>) --}}
             <details class="relative md:hidden">
@@ -93,7 +95,7 @@
 
     <main id="main" class="flex-1">
         @if (session('success') || session('error') || $cartNotices)
-            <div class="mx-auto max-w-7xl space-y-2 px-4 pt-6 sm:px-6">
+            <div class="mx-auto max-w-7xl space-y-2 px-4 pt-6 sm:px-6 print:hidden">
                 @if (session('success'))
                     <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
                         <span>{{ session('success') }}</span>
@@ -114,7 +116,7 @@
         {{ $slot }}
     </main>
 
-    <footer class="mt-16 border-t border-stone-200 bg-white">
+    <footer class="mt-16 border-t border-stone-200 bg-white print:hidden">
         <div class="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-3 sm:px-6">
             <div>
                 <p class="text-lg font-bold">{{ config('app.name', 'ShoeThrift') }}</p>

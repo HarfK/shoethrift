@@ -10,6 +10,7 @@ use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\HitPayWebhookController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ShopController;
 use Illuminate\Support\Facades\Route;
@@ -31,7 +32,15 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/account/orders', [AccountOrderController::class, 'index'])->name('account.orders.index');
     Route::get('/account/orders/{orderNumber}', [AccountOrderController::class, 'show'])->name('account.orders.show');
+    Route::post('/account/orders/{orderNumber}/pay', [AccountOrderController::class, 'pay'])->name('account.orders.pay');
+    Route::post('/account/orders/{orderNumber}/check', [AccountOrderController::class, 'check'])->name('account.orders.check');
+    Route::get('/account/orders/{orderNumber}/receipt', [AccountOrderController::class, 'receipt'])->name('account.orders.receipt');
+    // Local test tool; the controller returns 404 unless APP_ENV=local.
+    Route::post('/account/orders/{orderNumber}/simulate-payment', [AccountOrderController::class, 'simulatePayment'])->name('account.orders.simulate');
 });
+
+// Called by HitPay, not a browser: no session auth, CSRF-exempt (see bootstrap/app.php), signature-verified.
+Route::post('/webhooks/hitpay', HitPayWebhookController::class)->name('webhooks.hitpay');
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'create'])->name('login');
