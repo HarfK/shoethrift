@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
@@ -23,11 +24,15 @@ class RegisterController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email'],
+            'phone' => ['required', 'string', 'max:30', 'regex:'.CheckoutController::PHONE_PATTERN, User::uniquePhoneRule()],
             'password' => ['required', 'confirmed', Password::defaults()],
+        ], [
+            'phone.regex' => 'Enter a Malaysian phone number, e.g. 012-345 6789.',
         ]);
 
-        // `role` is not fillable, so new accounts always get the DB default (customer).
-        $user = User::create($validated);
+        // `role` is not fillable, so new accounts always get the DB default (customer). The phone
+        // starts unverified (demo OTP on the profile); addresses are added later in the address book.
+        $user = User::create([...$validated, 'phone' => trim($validated['phone'])]);
 
         event(new Registered($user));
 

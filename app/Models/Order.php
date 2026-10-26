@@ -4,15 +4,20 @@ namespace App\Models;
 
 use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
-use App\Enums\ProductStatus;
+use App\Enums\ReturnStatus;
+use App\Services\AdminNotifier;
 use Database\Factories\OrderFactory;
 use DomainException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class Order extends Model
@@ -40,6 +45,9 @@ class Order extends Model
         'payment_url',
         'payment_expires_at',
         'paid_at',
+        'delivery_failed_at',
+        'delivered_at',
+        'refunded_amount',
     ];
 
     /**
@@ -61,6 +69,9 @@ class Order extends Model
             'payment_method' => PaymentMethod::class,
             'payment_expires_at' => 'datetime',
             'paid_at' => 'datetime',
+            'delivery_failed_at' => 'datetime',
+            'delivered_at' => 'datetime',
+            'refunded_amount' => 'decimal:2',
         ];
     }
 
@@ -69,7 +80,9 @@ class Order extends Model
      *
      * - Online (HitPay): pending → paid happens ONLY via the verified webhook, so admins can just
      *   cancel a pending order; then paid → shipped → completed.
-     * - Cash on Delivery: pending → shipped → completed (completed = cash collected); cancel only while pending.
+     * - Cash on Delivery: pending → shipped → delivered → completed (= cash collected). Cancelling a
+     *   pending order is a shop cancel; cancelling a shipped/delivered one is a FAILED DELIVERY
+     *   (recorded in delivery_failed_at and counted against the customer, see CashOnDeliveryPolicy).
      * - Orders from before payments existed (null): OrderStatus's generic forward-only rules.
      *
      * @return list<OrderStatus>
@@ -79,15 +92,91 @@ class Order extends Model
         return match ($this->payment_method) {
             PaymentMethod::Online => match ($status) {
                 OrderStatus::Pending => [OrderStatus::Cancelled],
+                OrderStatus::Delivered => [],
                 default => $status->allowedTransitions(),
             },
             PaymentMethod::CashOnDelivery => match ($status) {
                 OrderStatus::Pending => [OrderStatus::Shipped, OrderStatus::Cancelled],
-                OrderStatus::Shipped => [OrderStatus::Completed],
+                OrderStatus::Shipped => [OrderStatus::Delivered, OrderStatus::Cancelled],
+                OrderStatus::Delivered => [OrderStatus::Completed, OrderStatus::Cancelled],
                 default => [],
             },
             null => $status->allowedTransitions(),
         };
+    }
+
+    public function isCashOnDelivery(): bool
+    {
+        return $this->payment_method === PaymentMethod::CashOnDelivery;
+    }
+
+    /**
+     * A COD order cancelled because the parcel couldn't be delivered or the cash wasn't paid.
+     */
+    public function isFailedDelivery(): bool
+    {
+        return $this->delivery_failed_at !== null;
+    }
+
+    /**
+     * Status as shown to people: COD's completed step is "Cash collected", and a failed
+     * delivery is "Failed delivery" rather than a plain "Cancelled".
+     */
+    public function statusLabel(): string
+    {
+        return match (true) {
+            $this->isFailedDelivery() => 'Failed delivery',
+            $this->isPartiallyRefunded() => 'Partially refunded',
+            $this->isCashOnDelivery() && $this->status === OrderStatus::Completed => 'Cash collected',
+            default => $this->status->label(),
+        };
+    }
+
+    /**
+     * Button text for moving this order (in its current status) to $to.
+     */
+    public function actionLabel(OrderStatus $to): string
+    {
+        return match ($to) {
+            OrderStatus::Paid => 'Mark paid',
+            OrderStatus::Shipped => 'Mark shipped',
+            OrderStatus::Delivered => 'Mark delivered',
+            OrderStatus::Completed => $this->isCashOnDelivery() ? 'Cash collected' : 'Mark completed',
+            OrderStatus::Cancelled => $this->cancellingMeansFailedDelivery() ? 'Failed delivery' : 'Cancel order',
+            default => $to->label(),
+        };
+    }
+
+    /**
+     * Cancelling a COD order after it left the shop means the delivery failed.
+     */
+    public function cancellingMeansFailedDelivery(?OrderStatus $from = null): bool
+    {
+        return $this->isCashOnDelivery()
+            && in_array($from ?? $this->status, [OrderStatus::Shipped, OrderStatus::Delivered], true);
+    }
+
+    /**
+     * Orders that count as revenue: money actually received (paid_at set) and not cancelled or
+     * failed. Online: paid/shipped/completed; COD: completed (cash collected). Refunded orders are
+     * included so their refunds can be subtracted (see App\Services\Reports\SalesReport).
+     *
+     * @param  Builder<Order>  $query
+     */
+    public function scopeRevenue(Builder $query): void
+    {
+        $query->whereNotNull('paid_at')
+            ->whereIn('status', [OrderStatus::Paid, OrderStatus::Shipped, OrderStatus::Completed, OrderStatus::Refunded]);
+    }
+
+    /**
+     * COD orders whose delivery failed (for the per-customer count).
+     *
+     * @param  Builder<Order>  $query
+     */
+    public function scopeFailedCodDelivery(Builder $query): void
+    {
+        $query->where('payment_method', PaymentMethod::CashOnDelivery)->whereNotNull('delivery_failed_at');
     }
 
     /**
@@ -161,7 +250,8 @@ class Order extends Model
                 $suffix .= self::ORDER_NUMBER_ALPHABET[random_int(0, strlen(self::ORDER_NUMBER_ALPHABET) - 1)];
             }
 
-            $number = 'TS-'.now()->format('Ymd').'-'.$suffix;
+            // The date part is the Malaysian date, so an order placed at 1 am in KL isn't dated yesterday.
+            $number = 'TS-'.now(config('app.display_timezone'))->format('Ymd').'-'.$suffix;
         } while (static::where('order_number', $number)->exists());
 
         return $number;
@@ -208,8 +298,9 @@ class Order extends Model
      * Completing a Cash on Delivery order records paid_at (the cash was collected).
      *
      * Cancelling returns each item's quantity to stock and makes sold products available
-     * again (hidden products stay hidden). The order row is locked and re-read inside the
-     * transaction, so two concurrent cancels can't restock twice.
+     * again (hidden products stay hidden); for a COD order that had shipped it also records
+     * delivery_failed_at. The order row is locked and re-read inside the transaction, so two
+     * concurrent cancels can't restock twice.
      *
      * @throws DomainException when the transition isn't allowed
      */
@@ -224,12 +315,21 @@ class Order extends Model
 
             if ($status === OrderStatus::Cancelled) {
                 $this->restoreStock();
+
+                if ($this->cancellingMeansFailedDelivery($current)) {
+                    $this->delivery_failed_at = now();
+                }
             }
 
             $this->forceFill(['status' => $status]);
 
             if ($status === OrderStatus::Completed && $this->payment_method === PaymentMethod::CashOnDelivery && $this->paid_at === null) {
                 $this->paid_at = now();
+            }
+
+            // Delivered starts the return window: COD has its own step; online "completed" means delivered.
+            if (in_array($status, [OrderStatus::Delivered, OrderStatus::Completed], true) && $this->delivered_at === null) {
+                $this->delivered_at = now();
             }
 
             $this->save();
@@ -257,6 +357,7 @@ class Order extends Model
             $order->restoreStock();
             $order->status = OrderStatus::Failed;
             $order->save();
+            AdminNotifier::paymentFailed($order); // sent after commit
             $this->setRawAttributes($order->getAttributes(), true);
 
             return true;
@@ -264,20 +365,13 @@ class Order extends Model
     }
 
     /**
-     * Return each item's quantity to stock; sold products become available (hidden stay hidden).
+     * Return each item's quantity to stock (see Product::returnToStock()).
      * Call inside a transaction that has locked this order.
      */
     private function restoreStock(): void
     {
         foreach ($this->items()->get() as $item) {
-            $product = Product::query()->lockForUpdate()->findOrFail($item->product_id);
-            $product->stock += $item->quantity;
-
-            if ($product->status === ProductStatus::Sold) {
-                $product->status = ProductStatus::Available;
-            }
-
-            $product->save();
+            Product::returnToStock($item->product_id, $item->quantity);
         }
     }
 
@@ -287,7 +381,107 @@ class Order extends Model
     public function hasReceipt(): bool
     {
         return $this->paid_at !== null
-            && in_array($this->status, [OrderStatus::Paid, OrderStatus::Shipped, OrderStatus::Completed], true);
+            && in_array($this->status, [OrderStatus::Paid, OrderStatus::Shipped, OrderStatus::Completed, OrderStatus::Refunded], true);
+    }
+
+    /**
+     * @return HasMany<Review, $this>
+     */
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    /**
+     * Orders whose buyer may review the pairs: paid online orders (paid, shipped, completed)
+     * and COD orders once delivered (delivered, completed). Never pending, cancelled, failed
+     * or refunded orders.
+     */
+    public function allowsReviews(): bool
+    {
+        return match ($this->status) {
+            OrderStatus::Paid, OrderStatus::Shipped => $this->paid_at !== null,
+            OrderStatus::Delivered => true,
+            OrderStatus::Completed => true,
+            default => false,
+        };
+    }
+
+    /**
+     * Items the customer may still review: the order allows reviews, the pair wasn't returned
+     * and refunded, and it has no review yet (one per product per order).
+     *
+     * @return Collection<int, OrderItem>
+     */
+    public function reviewableItems(): Collection
+    {
+        if (! $this->allowsReviews()) {
+            return new Collection;
+        }
+
+        $this->loadMissing(['items', 'reviews', 'returnRequest.items']);
+
+        $refundedItemIds = $this->returnRequest?->status === ReturnStatus::Refunded
+            ? $this->returnRequest->items->pluck('order_item_id')->all()
+            : [];
+        $reviewedProductIds = $this->reviews->pluck('product_id')->all();
+
+        return $this->items
+            ->reject(fn (OrderItem $item) => in_array($item->id, $refundedItemIds, true)
+                || in_array($item->product_id, $reviewedProductIds, true))
+            ->values();
+    }
+
+    /**
+     * @return HasOne<ReturnRequest, $this>
+     */
+    public function returnRequest(): HasOne
+    {
+        return $this->hasOne(ReturnRequest::class);
+    }
+
+    /**
+     * Some, but not all, of the paid amount was refunded.
+     */
+    public function isPartiallyRefunded(): bool
+    {
+        return (float) $this->refunded_amount > 0 && $this->status !== OrderStatus::Refunded;
+    }
+
+    /**
+     * Amount still refundable: what was paid minus what was already refunded.
+     */
+    public function refundableAmount(): string
+    {
+        return number_format(max(0, (float) $this->total - (float) $this->refunded_amount), 2, '.', '');
+    }
+
+    /**
+     * Last moment a return can be requested: return window (config/shop.php) after delivery.
+     */
+    public function returnDeadline(): ?Carbon
+    {
+        return $this->delivered_at?->copy()->addDays((int) config('shop.returns.window_days'));
+    }
+
+    /**
+     * Why this order can't be returned right now, or null if it can. Returns need an order that
+     * is paid AND delivered (status completed: online delivered, or COD cash collected), inside
+     * the return window, with no earlier return request.
+     */
+    public function returnUnavailableReason(): ?string
+    {
+        return match (true) {
+            $this->returnRequest()->exists() => 'A return has already been requested for this order.',
+            $this->status !== OrderStatus::Completed || $this->paid_at === null || $this->delivered_at === null => 'Returns are available once your order has been delivered and paid.',
+            now()->greaterThan($this->returnDeadline()) => 'The '.config('shop.returns.window_days').'-day return window for this order has closed.',
+            default => null,
+        };
+    }
+
+    public function canRequestReturn(): bool
+    {
+        return $this->returnUnavailableReason() === null;
     }
 
     /**

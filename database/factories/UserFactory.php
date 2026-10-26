@@ -33,7 +33,7 @@ class UserFactory extends Factory
             'remember_token' => Str::random(10),
             'role' => UserRole::Customer,
             'phone' => fake()->numerify('01#-### ####'), // Malaysian mobile format, valid at checkout
-            'address' => fake()->address(),
+            // users.address is legacy (unused): addresses live in the address book (AddressFactory).
         ];
     }
 

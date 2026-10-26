@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ProductStatus;
 use App\Models\Product;
 use App\Services\ShoppingCart;
 use Illuminate\Http\RedirectResponse;
@@ -31,7 +32,9 @@ class CartController extends Controller
         $product = Product::find($data['product_id']);
 
         if (! $product?->isAvailable()) {
-            return back()->with('error', 'Sorry, this pair is no longer available.');
+            return back()->with('error', $product && $product->status !== ProductStatus::Hidden
+                ? 'Sorry, someone else just bought this pair.'
+                : 'Sorry, this pair is no longer for sale.');
         }
 
         if ($cart->quantityOf($product) >= $product->stock) {
@@ -58,7 +61,9 @@ class CartController extends Controller
         if (! $product?->isAvailable()) {
             $cart->remove($productId);
 
-            return redirect()->route('cart.index')->with('error', 'Sorry, this pair is no longer available, so it was removed from your cart.');
+            return redirect()->route('cart.index')->with('error', $product && $product->status !== ProductStatus::Hidden
+                ? "Sorry, someone else just bought {$product->name} ({$product->size_label}), so we removed it from your cart."
+                : 'Sorry, this pair is no longer for sale, so we removed it from your cart.');
         }
 
         $quantity = $cart->update($product, $data['quantity']);

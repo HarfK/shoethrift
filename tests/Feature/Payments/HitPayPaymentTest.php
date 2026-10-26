@@ -67,9 +67,9 @@ class HitPayPaymentTest extends TestCase
         $this->post(route('cart.items.store'), ['product_id' => $this->dunk->id]);
 
         return $this->post(route('checkout.store'), [
-            'shipping_name' => 'Aisyah Rahman',
-            'shipping_phone' => '012-345 6789',
-            'shipping_address' => '12 Jalan Bunga, 40100 Shah Alam',
+            'recipient_name' => 'Aisyah Rahman',
+            'phone' => '012-345 6789',
+            'line1' => '12 Jalan Bunga', 'postcode' => '40100', 'city' => 'Shah Alam', 'state' => 'Selangor',
             'payment_method' => $method,
             'expected_total' => '310.00',
         ]);
@@ -477,8 +477,9 @@ class HitPayPaymentTest extends TestCase
         $admin = User::factory()->admin()->create();
 
         $this->actingAs($admin)->get(route('admin.orders.show', $order))
-            ->assertDontSee('<option value="paid"', false)
-            ->assertSee('<option value="cancelled"', false)
+            ->assertDontSee('name="status" value="paid"', false)
+            ->assertSee('name="status" value="cancelled"', false)
+            ->assertSee('Cancel order')
             ->assertSee(['Online payment (HitPay)', 'pr-1', 'Not paid yet']);
 
         $this->actingAs($admin)->patch(route('admin.orders.status', $order), ['status' => 'paid'])
@@ -493,8 +494,9 @@ class HitPayPaymentTest extends TestCase
         $this->webhook(['id' => 'pr-1']);
 
         $this->actingAs(User::factory()->admin()->create())->get(route('admin.orders.show', $order))
-            ->assertSee(['Online payment (HitPay)', 'pr-1', 'pay-pr-1', $order->fresh()->paid_at->format('j M Y, g:i a')])
-            ->assertSee('<option value="shipped"', false);
+            ->assertSee(['Online payment (HitPay)', 'pr-1', 'pay-pr-1', $order->fresh()->paid_at->shopDateTime()])
+            ->assertSee('name="status" value="shipped"', false)
+            ->assertSee('Mark shipped');
     }
 
     public function test_cash_on_delivery_flow_for_admins(): void
@@ -507,7 +509,11 @@ class HitPayPaymentTest extends TestCase
         $this->actingAs($admin)->patch(route('admin.orders.status', $order), ['status' => 'shipped'])->assertSessionHas('success');
         $this->assertNull($order->fresh()->paid_at);
 
-        $this->actingAs($admin)->patch(route('admin.orders.status', $order), ['status' => 'completed'])->assertSessionHas('success');
+        $this->actingAs($admin)->patch(route('admin.orders.status', $order), ['status' => 'delivered'])->assertSessionHas('success');
+        $this->assertNull($order->fresh()->paid_at, 'Delivered is not paid: the cash is confirmed separately.');
+
+        $this->actingAs($admin)->patch(route('admin.orders.status', $order), ['status' => 'completed'])
+            ->assertSessionHas('success', "Order {$order->order_number} is now Cash collected.");
         $order->refresh();
         $this->assertSame(OrderStatus::Completed, $order->status);
         $this->assertNotNull($order->paid_at, 'Completing a COD order records the cash as collected.');

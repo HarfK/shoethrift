@@ -3,6 +3,7 @@
 namespace App\Services\Payments;
 
 use App\Models\Order;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\Http;
  *
  * - Create payment request: POST /v1/payment-requests (form-encoded), header X-BUSINESS-API-KEY.
  * - Get payment status:     GET  /v1/payment-requests/{id}.
+ * - Refund a payment:       POST /v1/refund (JSON).
  * - Webhooks: Hitpay-Signature = HMAC-SHA256 of the raw JSON body, keyed with the webhook
  *   endpoint's salt.
  */
@@ -62,6 +64,24 @@ class HitPayClient
     public function getPaymentRequest(string $id): array
     {
         return $this->http()->get('/v1/payment-requests/'.rawurlencode($id))->throw()->json();
+    }
+
+    /**
+     * Refund (all or part of) a completed payment: POST /v1/refund with JSON
+     * { payment_id, amount } (https://docs.hitpayapp.com/apis/refund/refund).
+     * A successful refund comes back with an `id` and status "succeeded".
+     *
+     * @return array<string, mixed>
+     *
+     * @throws RequestException HitPay rejected the refund (4xx) or failed (5xx)
+     * @throws ConnectionException no response (timeout): the refund may or may not exist
+     */
+    public function refund(string $paymentId, string $amount): array
+    {
+        return $this->http()->asJson()->post('/v1/refund', [
+            'payment_id' => $paymentId,
+            'amount' => (float) $amount,
+        ])->throw()->json();
     }
 
     /**

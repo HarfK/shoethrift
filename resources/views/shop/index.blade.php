@@ -2,7 +2,7 @@
     $selectedConditions = array_map(fn ($c) => $c->value, $filters['conditions']);
     $activeFilterCount = collect([
         $filters['category'], $filters['brand'], $filters['size'],
-        $filters['conditions'] ?: null, $filters['min_price'], $filters['max_price'],
+        $filters['conditions'] ?: null, $filters['material'], $filters['box'] ?: null, $filters['min_price'], $filters['max_price'],
     ])->filter(fn ($value) => $value !== null)->count();
     $hasCriteria = $activeFilterCount > 0 || $filters['search'] !== '';
     $priceValue = fn (?float $price) => $price === null ? '' : rtrim(rtrim(number_format($price, 2, '.', ''), '0'), '.');
@@ -87,6 +87,23 @@
                             @endforeach
                         </div>
                     </fieldset>
+
+                    @if ($materials)
+                        <div>
+                            <label for="filter-material" class="mb-1.5 block text-sm font-semibold">Material</label>
+                            <select id="filter-material" name="material" class="block w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm">
+                                <option value="">All materials</option>
+                                @foreach ($materials as $material)
+                                    <option value="{{ $material }}" @selected($filters['material'] === $material)>{{ $material }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    @endif
+
+                    <label class="flex items-center gap-2 text-sm font-semibold">
+                        <input type="checkbox" name="box" value="1" class="rounded border-stone-300 text-emerald-700" @checked($filters['box'])>
+                        With original box
+                    </label>
 
                     <fieldset>
                         <legend class="mb-1.5 text-sm font-semibold">Price (RM)</legend>

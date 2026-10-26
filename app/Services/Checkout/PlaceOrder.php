@@ -8,6 +8,7 @@ use App\Enums\ProductStatus;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
+use App\Services\AdminNotifier;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -23,12 +24,15 @@ use Illuminate\Support\Facades\DB;
  */
 class PlaceOrder
 {
+    public function __construct(private readonly CashOnDeliveryPolicy $codPolicy) {}
+
     /**
      * @param  array<int, int>  $quantities  product id => quantity (from ShoppingCart::quantities())
      * @param  array{shipping_name: string, shipping_phone: string, shipping_address: string}  $shipping
      *
      * @throws ItemsUnavailableException
      * @throws PriceChangedException
+     * @throws CashOnDeliveryNotAllowedException
      */
     public function handle(User $user, array $quantities, array $shipping, string $expectedTotal, PaymentMethod $paymentMethod): Order
     {
@@ -65,6 +69,11 @@ class PlaceOrder
                 throw new PriceChangedException(self::fromSen($totalSen));
             }
 
+            if ($paymentMethod === PaymentMethod::CashOnDelivery
+                && $reason = $this->codPolicy->unavailableReason($user, self::fromSen($totalSen))) {
+                throw new CashOnDeliveryNotAllowedException($reason);
+            }
+
             $order = Order::create([
                 'user_id' => $user->id,
                 'order_number' => Order::generateOrderNumber(),
@@ -79,8 +88,11 @@ class PlaceOrder
                 ...$shipping,
             ]);
 
+            $lowStockThreshold = (int) config('shop.low_stock_threshold');
+
             foreach ($quantities as $productId => $quantity) {
                 $product = $products[$productId];
+                $stockBefore = $product->stock;
 
                 $order->items()->create([
                     'product_id' => $product->id,
@@ -93,7 +105,15 @@ class PlaceOrder
                     $product->status = ProductStatus::Sold;
                 }
                 $product->save();
+
+                // Only multi-pair products crossing the threshold; a single pair selling out is normal.
+                if ($stockBefore > $lowStockThreshold && $product->stock >= 1 && $product->stock <= $lowStockThreshold) {
+                    AdminNotifier::lowStock($product);
+                }
             }
+
+            // Deferred until the transaction commits (see AdminNotifier).
+            AdminNotifier::newOrder($order);
 
             return $order;
         });

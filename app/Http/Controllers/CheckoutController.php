@@ -3,7 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Enums\PaymentMethod;
+use App\Http\Requests\AddressRequest;
+use App\Models\Address;
 use App\Models\Order;
+use App\Services\CartNotice;
+use App\Services\Checkout\CashOnDeliveryNotAllowedException;
+use App\Services\Checkout\CashOnDeliveryPolicy;
 use App\Services\Checkout\ItemsUnavailableException;
 use App\Services\Checkout\PlaceOrder;
 use App\Services\Checkout\PriceChangedException;
@@ -21,7 +26,7 @@ class CheckoutController extends Controller
      */
     public const PHONE_PATTERN = '/^(\+?60[\s-]?|0)1?[0-9][\s-]?[0-9]{3,4}[\s-]?[0-9]{4}$/';
 
-    public function create(Request $request, ShoppingCart $cart): View|RedirectResponse
+    public function create(Request $request, ShoppingCart $cart, CashOnDeliveryPolicy $codPolicy): View|RedirectResponse
     {
         $cart->reconcile();
         $lines = $cart->lines();
@@ -33,29 +38,46 @@ class CheckoutController extends Controller
         $subtotal = $lines->sum(fn ($line) => $line->total());
         $shippingFee = (float) config('shop.shipping_fee');
 
+        $total = $subtotal + $shippingFee;
+
         return view('checkout.create', [
             'lines' => $lines,
             'subtotal' => $subtotal,
             'shippingFee' => $shippingFee,
-            'total' => $subtotal + $shippingFee,
+            'total' => $total,
             'user' => $request->user(),
+            'addresses' => $request->user()->addresses()->orderByDesc('is_default')->latest('updated_at')->get(),
+            'states' => config('shop.states'),
+            'codUnavailableReason' => $codPolicy->unavailableReason($request->user(), $total),
         ]);
     }
 
     public function store(Request $request, ShoppingCart $cart, PlaceOrder $placeOrder, StartHitPayPayment $startPayment): RedirectResponse
     {
+        $user = $request->user();
+        // address_id = one of the customer's saved addresses, or "new" (or absent) for the manual form.
+        $useSaved = $request->filled('address_id') && $request->input('address_id') !== 'new';
+
         $data = $request->validate([
-            'shipping_name' => ['required', 'string', 'max:100'],
-            'shipping_phone' => ['required', 'string', 'max:30', 'regex:'.self::PHONE_PATTERN],
-            'shipping_address' => ['required', 'string', 'min:10', 'max:500'],
+            'address_id' => $useSaved
+                ? ['integer', Rule::exists('addresses', 'id')->where('user_id', $user->id)]
+                : ['nullable'],
+            ...($useSaved ? [] : collect(AddressRequest::fieldRules())->except('label')->all()),
+            'save_address' => ['nullable', 'boolean'],
             'payment_method' => ['required', Rule::enum(PaymentMethod::class)],
-            'save_details' => ['nullable', 'boolean'],
             'expected_total' => ['required', 'numeric'],
         ], [
-            'shipping_phone.regex' => 'Enter a Malaysian phone number, e.g. 012-345 6789.',
+            ...AddressRequest::fieldMessages(),
+            'address_id.exists' => 'Choose one of your saved addresses.',
             'payment_method.required' => 'Choose how you want to pay.',
         ]);
         $paymentMethod = PaymentMethod::from($data['payment_method']);
+
+        // The order keeps a snapshot; it never links to the address book.
+        $address = $useSaved
+            ? $user->addresses()->findOrFail((int) $data['address_id'])
+            : new Address(collect($data)->only(['recipient_name', 'phone', 'line1', 'line2', 'postcode', 'city', 'state'])
+                ->map(fn ($value) => is_string($value) && trim($value) !== '' ? trim($value) : null)->all());
 
         $quantities = $cart->quantities();
 
@@ -68,24 +90,22 @@ class CheckoutController extends Controller
             $order = $placeOrder->handle(
                 $request->user(),
                 $quantities,
-                [
-                    'shipping_name' => trim($data['shipping_name']),
-                    'shipping_phone' => trim($data['shipping_phone']),
-                    'shipping_address' => trim($data['shipping_address']),
-                ],
+                $address->toShippingSnapshot(),
                 (string) $data['expected_total'],
                 $paymentMethod,
             );
         } catch (ItemsUnavailableException $e) {
             // Drop what's gone (and clamp quantities) so the customer reviews an accurate cart.
+            // reconcile() explains each item (bought by someone else / in your own order / off sale).
             $cart->reconcile();
-            $cart->pullNotices();
+            $notices = $cart->pullNotices()
+                ?: array_map(fn (string $item) => new CartNotice("{$item} is no longer available in that quantity."), array_values($e->items));
 
-            $names = implode(', ', $e->items);
-
-            return redirect()->route('cart.index')->with('error', count($e->items) === 1
-                ? "Sorry, {$names} was just bought by someone else and was removed from your cart. Please review your cart before checking out."
-                : "Sorry, these items were just bought by someone else and were removed from your cart: {$names}. Please review your cart before checking out.");
+            return redirect()->route('cart.index')
+                ->with('error', "Your order wasn't placed because your cart changed. Nothing was charged. Please review your cart and check out again.")
+                ->with('cart_notices', $notices);
+        } catch (CashOnDeliveryNotAllowedException $e) {
+            return redirect()->route('checkout.create')->withInput()->withErrors(['payment_method' => $e->getMessage()]);
         } catch (PriceChangedException $e) {
             return redirect()->route('checkout.create')->withInput()
                 ->with('error', "Prices changed since you opened checkout. Your new total is RM {$e->newTotal}. Please review it before placing your order.");
@@ -93,11 +113,11 @@ class CheckoutController extends Controller
 
         $cart->clear();
 
-        if ($request->boolean('save_details')) {
-            $request->user()->update([
-                'phone' => $order->shipping_phone,
-                'address' => $order->shipping_address,
-            ]);
+        if (! $useSaved && $request->boolean('save_address') && $user->addresses()->count() < config('shop.max_addresses')) {
+            $saved = $user->addresses()->create($address->getAttributes());
+            if (! $user->defaultAddress()->exists()) {
+                $saved->makeDefault();
+            }
         }
 
         if ($paymentMethod === PaymentMethod::Online) {

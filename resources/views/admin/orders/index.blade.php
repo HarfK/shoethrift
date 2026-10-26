@@ -60,15 +60,18 @@
                         <td class="px-4 py-3">
                             <div class="font-medium">{{ $order->user->name }}</div>
                             <div class="text-xs text-stone-500">{{ $order->user->email }}</div>
+                            @if (($failedCod = $order->user->failedCodCount()) > 0)
+                                <span class="mt-1 inline-flex rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-800">{{ $failedCod }} failed COD{{ $order->user->isCodBlocked() ? ' · blocked' : '' }}</span>
+                            @endif
                         </td>
-                        <td class="whitespace-nowrap px-4 py-3 text-stone-600">{{ $order->created_at->format('j M Y, g:i a') }}</td>
+                        <td class="whitespace-nowrap px-4 py-3 text-stone-600">{{ $order->created_at->shopDateTime() }}</td>
                         <td class="px-4 py-3 text-right tabular-nums">{{ $order->items_count }}</td>
                         <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">RM {{ number_format($order->total, 2) }}</td>
                         <td class="whitespace-nowrap px-4 py-3 text-stone-600">
                             {{ match ($order->payment_method?->value) { 'online' => 'Online', 'cod' => 'COD', default => '—' } }}
                             @if ($order->needsRefund())<span class="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-800">Refund</span>@endif
                         </td>
-                        <td class="px-4 py-3"><x-order-status-badge :status="$order->status" /></td>
+                        <td class="px-4 py-3"><x-order-status-badge :order="$order" /></td>
                     </tr>
                 @empty
                     <tr>

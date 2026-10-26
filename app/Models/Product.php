@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ProductCondition;
 use App\Enums\ProductStatus;
+use App\Enums\SoleCondition;
 use App\Models\Concerns\HasUniqueSlug;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -35,6 +36,12 @@ class Product extends Model
         'condition',
         'size',
         'color',
+        'material',
+        'insole_length_cm',
+        'sole_condition',
+        'box_included',
+        'wear_notes',
+        'authenticity_notes',
         'stock',
         'status',
     ];
@@ -52,6 +59,9 @@ class Product extends Model
             'stock' => 'integer',
             'condition' => ProductCondition::class,
             'status' => ProductStatus::class,
+            'insole_length_cm' => 'decimal:1',
+            'sole_condition' => SoleCondition::class,
+            'box_included' => 'boolean',
         ];
     }
 
@@ -136,6 +146,41 @@ class Product extends Model
         }
 
         $this->unsetRelation('images')->unsetRelation('primaryImage');
+    }
+
+    /**
+     * @return HasMany<Review, $this>
+     */
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    /**
+     * Adds rating_avg and reviews_count, from VISIBLE reviews only, in the same query.
+     *
+     * @param  Builder<Product>  $query
+     */
+    protected function scopeWithRatingSummary(Builder $query): void
+    {
+        $query->withAvg(['reviews as rating_avg' => fn ($query) => $query->visible()], 'rating')
+            ->withCount(['reviews as reviews_count' => fn ($query) => $query->visible()]);
+    }
+
+    /**
+     * Put returned/cancelled pairs back on sale: adds to stock, and a sold product becomes
+     * available again (hidden ones stay hidden). Call inside a transaction.
+     */
+    public static function returnToStock(int $productId, int $quantity): void
+    {
+        $product = static::query()->lockForUpdate()->findOrFail($productId);
+        $product->stock += $quantity;
+
+        if ($product->status === ProductStatus::Sold) {
+            $product->status = ProductStatus::Available;
+        }
+
+        $product->save();
     }
 
     /**

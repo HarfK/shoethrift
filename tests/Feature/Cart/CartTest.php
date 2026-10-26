@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\Cart;
 
+use App\Enums\OrderStatus;
 use App\Models\CartItem;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\User;
 use App\Services\ShoppingCart;
@@ -101,9 +104,12 @@ class CartTest extends TestCase
         $sold = Product::factory()->sold()->create();
         $hidden = Product::factory()->hidden()->create();
 
-        foreach ([$sold->id, $hidden->id, 999999] as $productId) {
+        $this->post(route('cart.items.store'), ['product_id' => $sold->id])
+            ->assertSessionHas('error', 'Sorry, someone else just bought this pair.');
+
+        foreach ([$hidden->id, 999999] as $productId) {
             $this->post(route('cart.items.store'), ['product_id' => $productId])
-                ->assertSessionHas('error', 'Sorry, this pair is no longer available.');
+                ->assertSessionHas('error', 'Sorry, this pair is no longer for sale.');
         }
 
         $this->assertSame(0, app(ShoppingCart::class)->count());
@@ -165,12 +171,14 @@ class CartTest extends TestCase
 
         // Any shop page, not just the cart.
         $this->get(route('home'))
-            ->assertSee('Nike Dunk Low (UK 8.5) is no longer available and was removed from your cart.')
+            ->assertSee('Sorry, someone else just bought Nike Dunk Low (UK 8.5), so we removed it from your cart.')
+            ->assertSee('See other UK 8.5 shoes')
+            ->assertSee(route('shop.index', ['size' => '8.5']), false)
             ->assertSee($this->headerCount(1), false);
 
         $this->get(route('cart.index'))
             ->assertDontSee('Nike Dunk Low')
-            ->assertDontSee('no longer available'); // told once
+            ->assertDontSee('someone else just bought'); // told once
     }
 
     public function test_hidden_and_deleted_items_are_removed(): void
@@ -183,9 +191,42 @@ class CartTest extends TestCase
         $this->samba->delete();
 
         $this->get(route('cart.index'))
-            ->assertSee('Nike Dunk Low (UK 8.5) is no longer available and was removed from your cart.')
-            ->assertSee('An item in your cart is no longer available and was removed.')
+            ->assertSee('Nike Dunk Low (UK 8.5) is no longer for sale and was removed from your cart.')
+            ->assertSee('An item in your cart is no longer for sale and was removed.')
+            ->assertDontSee('someone else just bought')
             ->assertSee('Your cart is empty.');
+    }
+
+    public function test_an_item_in_the_customers_own_order_is_not_blamed_on_someone_else(): void
+    {
+        $customer = User::factory()->create();
+        $this->actingAs($customer);
+        $this->add($this->dunk);
+
+        // The customer bought it themselves (e.g. from another device) and hasn't paid yet.
+        $order = Order::factory()->for($customer)->online()->status(OrderStatus::Pending)->create(['order_number' => 'TS-20261026-MINE22']);
+        OrderItem::factory()->for($order)->for($this->dunk)->create(['price' => 300]);
+        $this->dunk->update(['status' => 'sold', 'stock' => 0]);
+
+        $this->get(route('home'))
+            ->assertSee('Nike Dunk Low (UK 8.5) is already in your order TS-20261026-MINE22, waiting for payment, so we removed it from your cart.')
+            ->assertSee(route('account.orders.show', 'TS-20261026-MINE22'), false)
+            ->assertDontSee('someone else just bought');
+    }
+
+    public function test_someone_elses_order_still_says_someone_else(): void
+    {
+        $customer = User::factory()->create();
+        $this->actingAs($customer);
+        $this->add($this->dunk);
+
+        $order = Order::factory()->status(OrderStatus::Pending)->create();
+        OrderItem::factory()->for($order)->for($this->dunk)->create(['price' => 300]);
+        $this->dunk->update(['status' => 'sold', 'stock' => 0]);
+
+        $this->get(route('home'))
+            ->assertSee('Sorry, someone else just bought Nike Dunk Low (UK 8.5), so we removed it from your cart.')
+            ->assertDontSee($order->order_number);
     }
 
     public function test_quantity_is_reduced_when_stock_drops(): void
@@ -204,7 +245,7 @@ class CartTest extends TestCase
         $this->samba->update(['status' => 'sold', 'stock' => 0]);
 
         $this->patch(route('cart.items.update', $this->samba->id), ['quantity' => 1])
-            ->assertSessionHas('error', 'Sorry, this pair is no longer available, so it was removed from your cart.');
+            ->assertSessionHas('error', 'Sorry, someone else just bought Adidas Samba OG (UK 9), so we removed it from your cart.');
 
         $this->assertSame(0, app(ShoppingCart::class)->count());
     }
@@ -256,6 +297,7 @@ class CartTest extends TestCase
         $this->post('/register', [
             'name' => 'New Shopper',
             'email' => 'new@example.com',
+            'phone' => '013-222 3333',
             'password' => 'password',
             'password_confirmation' => 'password',
         ]);

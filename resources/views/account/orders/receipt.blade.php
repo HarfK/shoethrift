@@ -22,8 +22,8 @@
 
             <dl class="grid gap-x-8 gap-y-3 border-b border-stone-200 py-6 text-sm sm:grid-cols-2">
                 <div><dt class="text-stone-500">Order number</dt><dd class="font-semibold">{{ $order->order_number }}</dd></div>
-                <div><dt class="text-stone-500">Order date</dt><dd>{{ $order->created_at->format('j M Y, g:i a') }}</dd></div>
-                <div><dt class="text-stone-500">Paid on</dt><dd>{{ $order->paid_at->format('j M Y, g:i a') }}</dd></div>
+                <div><dt class="text-stone-500">Order date</dt><dd>{{ $order->created_at->shopDateTime() }}</dd></div>
+                <div><dt class="text-stone-500">Paid on</dt><dd>{{ $order->paid_at->shopDateTime() }}</dd></div>
                 <div>
                     <dt class="text-stone-500">Payment method</dt>
                     <dd>{{ $order->payment_method?->label() ?? 'Online' }}@if ($order->isSimulatedPayment()) <strong>(Simulated test payment)</strong>@endif</dd>
@@ -40,7 +40,7 @@
                 <div class="sm:col-span-2">
                     <dt class="text-stone-500">Billed and shipped to</dt>
                     <dd>
-                        {{ $order->shipping_name ?? $order->user->name }}@if ($order->shipping_phone) · {{ $order->shipping_phone }}@endif
+                        {{ $order->shipping_name ?? $order->user->name }}@if ($order->shipping_phone) · Recipient phone: {{ $order->shipping_phone }}@endif
                         <span class="block whitespace-pre-line text-stone-700">{{ $order->shipping_address }}</span>
                     </dd>
                 </div>

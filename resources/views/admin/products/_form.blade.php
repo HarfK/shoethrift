@@ -45,6 +45,40 @@
             <x-form.select name="status" label="Status" required
                            :options="collect($statuses)->mapWithKeys(fn ($s) => [$s->value => $s->label()])" :value="$product->status?->value" />
         </div>
+
+        {{-- Thrift details: what buyers of second-hand shoes ask about. All optional. --}}
+        <fieldset class="mt-4 border-t border-stone-200 pt-5">
+            <legend class="text-base font-semibold">Thrift details</legend>
+            <div class="mt-3 grid gap-x-4 sm:grid-cols-3">
+                <x-form.select name="material" label="Material" placeholder="Not specified"
+                               :options="collect(config('shop.materials'))->mapWithKeys(fn ($m) => [$m => $m])" :value="$product->material" />
+                <x-form.field name="insole_length_cm" label="Insole length (cm)" type="number" step="0.1" min="10" max="35"
+                              :value="$product->insole_length_cm" placeholder="e.g. 27.5" />
+                <x-form.select name="sole_condition" label="Sole condition" placeholder="Not specified"
+                               :options="collect(\App\Enums\SoleCondition::cases())->mapWithKeys(fn ($c) => [$c->value => $c->label()])" :value="$product->sole_condition?->value" />
+            </div>
+            <label class="mb-4 flex items-center gap-2 text-sm">
+                <input type="hidden" name="box_included" value="0">
+                <input type="checkbox" name="box_included" value="1" class="rounded border-stone-300 text-emerald-700"
+                       @checked(old('box_included', $product->box_included))>
+                Original box included
+            </label>
+            @foreach (['wear_notes' => ['Defects or wear notes', 'e.g. Small scuff on the left heel, light creasing on the toe box.'], 'authenticity_notes' => ['Authenticity notes', 'e.g. Style code on the tongue label checked; stitching matches retail.']] as $field => [$label, $placeholder])
+                <div class="mb-4">
+                    <label for="{{ $field }}" class="mb-1 block text-sm font-medium text-stone-700">{{ $label }}</label>
+                    <textarea id="{{ $field }}" name="{{ $field }}" rows="3" maxlength="1000" placeholder="{{ $placeholder }}"
+                              @error($field) aria-invalid="true" aria-describedby="{{ $field }}-error" @enderror
+                              @class([
+                                  'block w-full rounded-md border bg-white px-3 py-2 text-sm shadow-xs focus:outline-none focus:ring-2 focus:ring-emerald-600/40',
+                                  'border-red-400' => $errors->has($field),
+                                  'border-stone-300' => ! $errors->has($field),
+                              ])>{{ old($field, $product->{$field}) }}</textarea>
+                    @error($field)
+                        <p id="{{ $field }}-error" class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+            @endforeach
+        </fieldset>
     </section>
 
     <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">

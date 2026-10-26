@@ -465,7 +465,7 @@ class PaymentStatusTest extends TestCase
         $this->post(route('cart.items.store'), ['product_id' => $this->dunk->id]);
 
         $this->viaNgrok()->post(route('checkout.store'), [
-            'shipping_name' => 'Aisyah', 'shipping_phone' => '012-345 6789', 'shipping_address' => '12 Jalan Bunga, Shah Alam',
+            'recipient_name' => 'Aisyah', 'phone' => '012-345 6789', 'line1' => '12 Jalan Bunga', 'postcode' => '40100', 'city' => 'Shah Alam', 'state' => 'Selangor',
             'payment_method' => 'online', 'expected_total' => '310.00',
         ])->assertRedirect('https://checkout.sandbox.hit-pay.com/pay/1');
 

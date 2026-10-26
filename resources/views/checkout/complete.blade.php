@@ -22,7 +22,7 @@
 
         <section class="mt-6 rounded-xl border border-stone-200 bg-white p-4 text-sm">
             <h2 class="font-semibold">Shipping to</h2>
-            <p class="mt-2">{{ $order->shipping_name }} · {{ $order->shipping_phone }}</p>
+            <p class="mt-2">{{ $order->shipping_name }} · Recipient phone: {{ $order->shipping_phone }}</p>
             <p class="mt-1 whitespace-pre-line text-stone-700">{{ $order->shipping_address }}</p>
         </section>
 

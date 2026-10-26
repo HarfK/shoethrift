@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\OrderStatus;
+use App\Enums\ProductStatus;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Support\Collection;
@@ -20,7 +22,7 @@ class ShoppingCart
 {
     public const SESSION_KEY = 'cart';
 
-    /** @var list<string> */
+    /** @var list<CartNotice> */
     private array $notices = [];
 
     /**
@@ -153,19 +155,59 @@ class ShoppingCart
 
             if (! $product?->isAvailable()) {
                 $this->put($productId, 0);
-                $this->notices[] = $product
-                    ? "{$product->name} ({$product->size_label}) is no longer available and was removed from your cart."
-                    : 'An item in your cart is no longer available and was removed.';
+                $this->notices[] = $this->unavailableNotice($product);
 
                 continue;
             }
 
             if ($quantity > $product->stock) {
                 $this->put($productId, $product->stock);
-                $this->notices[] = "Only {$product->stock} ".str('pair')->plural($product->stock)
-                    ." of {$product->name} ({$product->size_label}) ".($product->stock === 1 ? 'is' : 'are').' left, so we updated your cart.';
+                $this->notices[] = new CartNotice("Only {$product->stock} ".str('pair')->plural($product->stock)
+                    ." of {$product->name} ({$product->size_label}) ".($product->stock === 1 ? 'is' : 'are').' left, so we updated your cart.');
             }
         }
+    }
+
+    /**
+     * Explain why an item left the cart: bought by someone else, already in the customer's own
+     * order, or taken off sale (hidden / deleted) by the shop.
+     */
+    private function unavailableNotice(?Product $product): CartNotice
+    {
+        if ($product === null) {
+            return new CartNotice('An item in your cart is no longer for sale and was removed.');
+        }
+
+        $item = "{$product->name} ({$product->size_label})";
+
+        if ($product->status === ProductStatus::Hidden) {
+            return new CartNotice("{$item} is no longer for sale and was removed from your cart.");
+        }
+
+        // Sold out. If this customer's own open order holds it, they bought it, not "someone else".
+        $ownOrder = $this->user()?->orders()
+            ->whereIn('status', [OrderStatus::Pending, OrderStatus::Paid, OrderStatus::Shipped, OrderStatus::Delivered])
+            ->whereHas('items', fn ($query) => $query->where('product_id', $product->id))
+            ->latest('id')
+            ->first();
+
+        if ($ownOrder) {
+            return new CartNotice(
+                "{$item} is already in your order {$ownOrder->order_number}"
+                    .($ownOrder->isAwaitingOnlinePayment() ? ', waiting for payment' : '')
+                    .', so we removed it from your cart.',
+                route('account.orders.show', $ownOrder->order_number),
+                'View order',
+            );
+        }
+
+        $size = Product::formatSize($product->size);
+
+        return new CartNotice(
+            "Sorry, someone else just bought {$item}, so we removed it from your cart.",
+            route('shop.index', ['size' => $size]),
+            "See other {$product->size_label} shoes",
+        );
     }
 
     /**
@@ -188,7 +230,7 @@ class ShoppingCart
      * Take (and clear) the notices produced by reconcile(), so each is shown exactly once
      * even if this instance outlives the request (tests, Octane).
      *
-     * @return list<string>
+     * @return list<CartNotice>
      */
     public function pullNotices(): array
     {

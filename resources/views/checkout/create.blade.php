@@ -1,5 +1,3 @@
-@php($inputClass = 'block w-full rounded-md border bg-white px-3 py-2.5 text-sm shadow-xs focus:outline-none focus:ring-2 focus:ring-emerald-600/40')
-
 <x-layouts.shop title="Checkout">
     <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <nav class="text-sm text-stone-500" aria-label="Breadcrumb">
@@ -18,33 +16,55 @@
                 <h2 id="shipping-heading" class="text-lg font-semibold">Shipping details</h2>
                 <p class="mt-1 text-sm text-stone-600">Who should we send your shoes to?</p>
 
-                <div class="mt-5 grid gap-x-4 sm:grid-cols-2">
-                    <x-form.field name="shipping_name" label="Full name" :value="$user->name" required maxlength="100" autocomplete="name" />
-                    <x-form.field name="shipping_phone" label="Phone number" type="tel" :value="$user->phone" required maxlength="30"
-                                  autocomplete="tel" placeholder="012-345 6789" />
-                </div>
+                {{--
+                    Saved addresses as radio cards, plus "Use a different address". The manual fields show only when
+                    that option is chosen (CSS :has, no JS); they skip HTML `required` then, the server validates them.
+                --}}
+                @php($selectedAddress = (string) old('address_id', $addresses->first()?->id ?? 'new'))
+                <div class="group/address mt-5">
+                    @if ($addresses->isNotEmpty())
+                        <div class="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Ship to">
+                            @foreach ($addresses as $address)
+                                <label class="flex cursor-pointer gap-3 rounded-lg border border-stone-300 p-4 text-sm has-checked:border-stone-900 has-checked:ring-1 has-checked:ring-stone-900 has-focus-visible:ring-2 has-focus-visible:ring-emerald-600">
+                                    <input type="radio" name="address_id" value="{{ $address->id }}" class="mt-1 text-stone-900" @checked($selectedAddress === (string) $address->id)>
+                                    <span>
+                                        <span class="flex flex-wrap items-center gap-2 font-semibold">
+                                            {{ $address->recipient_name }}
+                                            @if ($address->label)<span class="rounded bg-stone-100 px-1.5 text-xs font-medium text-stone-600">{{ $address->label }}</span>@endif
+                                            @if ($address->is_default)<span class="rounded bg-emerald-50 px-1.5 text-xs font-medium text-emerald-800">Default</span>@endif
+                                        </span>
+                                        <span class="mt-1 block text-stone-600">{{ $address->phone }}</span>
+                                        <span class="mt-1 block whitespace-pre-line text-stone-700">{{ implode("\n", $address->lines()) }}</span>
+                                    </span>
+                                </label>
+                            @endforeach
+                            <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-stone-300 p-4 text-sm has-checked:border-stone-900 has-checked:ring-1 has-checked:ring-stone-900">
+                                <input type="radio" id="address-new" name="address_id" value="new" class="text-stone-900" @checked($selectedAddress === 'new')>
+                                <span class="font-semibold">Use a different address</span>
+                            </label>
+                        </div>
+                        @error('address_id')
+                            <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
+                        @enderror
+                        <p class="mt-2 text-xs text-stone-500"><a href="{{ route('account.addresses.index') }}" class="underline">Manage your addresses</a></p>
+                    @else
+                        <input type="hidden" name="address_id" value="new">
+                    @endif
 
-                <div class="mb-4">
-                    <label for="shipping_address" class="mb-1 block text-sm font-medium text-stone-700">Shipping address</label>
-                    <textarea id="shipping_address" name="shipping_address" rows="4" required minlength="10" maxlength="500" autocomplete="street-address"
-                              placeholder="No. 12, Jalan Bunga Raya&#10;Taman Melati&#10;40100 Shah Alam, Selangor"
-                              @error('shipping_address') aria-invalid="true" aria-describedby="shipping_address-error" @enderror
-                              @class([$inputClass, 'border-red-400' => $errors->has('shipping_address'), 'border-stone-300' => ! $errors->has('shipping_address')])>{{ old('shipping_address', $user->address) }}</textarea>
-                    @error('shipping_address')
-                        <p id="shipping_address-error" class="mt-1 text-sm text-red-600">{{ $message }}</p>
-                    @enderror
+                    <fieldset @class(['mt-5', 'hidden group-has-[#address-new:checked]/address:block' => $addresses->isNotEmpty()]) data-manual-address>
+                        <legend class="sr-only">New address</legend>
+                        @include('partials.address-fields', ['address' => new \App\Models\Address(['recipient_name' => $user->name, 'phone' => $user->phone]), 'required' => $addresses->isEmpty()])
+                        <label class="flex items-start gap-2 text-sm">
+                            <input type="hidden" name="save_address" value="0">
+                            <input type="checkbox" name="save_address" value="1" class="mt-0.5 rounded border-stone-300 text-emerald-700" @checked(old('save_address', true))>
+                            <span>Save this address to my address book</span>
+                        </label>
+                    </fieldset>
                 </div>
-
-                <label class="flex items-start gap-2 text-sm">
-                    <input type="hidden" name="save_details" value="0">
-                    <input type="checkbox" name="save_details" value="1" class="mt-0.5 rounded border-stone-300 text-emerald-700"
-                           @checked(old('save_details', blank($user->address)))>
-                    <span>Save this phone number and address to my profile for next time</span>
-                </label>
 
                 <fieldset class="mt-6">
                     <legend class="text-lg font-semibold">Payment</legend>
-                    @php($selectedMethod = old('payment_method', 'online'))
+                    @php($selectedMethod = $codUnavailableReason ? 'online' : old('payment_method', 'online'))
                     <div class="mt-3 grid gap-3 sm:grid-cols-2">
                         <label class="flex cursor-pointer gap-3 rounded-lg border border-stone-300 p-4 has-checked:border-stone-900 has-checked:ring-1 has-checked:ring-stone-900 has-focus-visible:ring-2 has-focus-visible:ring-emerald-600">
                             <input type="radio" name="payment_method" value="online" class="mt-1 text-stone-900" @checked($selectedMethod === 'online')>
@@ -53,11 +73,20 @@
                                 <span class="mt-0.5 block text-stone-600">Card or e-wallet through HitPay's secure checkout. Pay within {{ config('services.hitpay.payment_window_minutes') }} minutes to keep your pairs.</span>
                             </span>
                         </label>
-                        <label class="flex cursor-pointer gap-3 rounded-lg border border-stone-300 p-4 has-checked:border-stone-900 has-checked:ring-1 has-checked:ring-stone-900 has-focus-visible:ring-2 has-focus-visible:ring-emerald-600">
-                            <input type="radio" name="payment_method" value="cod" class="mt-1 text-stone-900" @checked($selectedMethod === 'cod')>
+                        <label @class([
+                            'flex gap-3 rounded-lg border border-stone-300 p-4',
+                            'cursor-pointer has-checked:border-stone-900 has-checked:ring-1 has-checked:ring-stone-900 has-focus-visible:ring-2 has-focus-visible:ring-emerald-600' => ! $codUnavailableReason,
+                            'cursor-not-allowed bg-stone-50 text-stone-500' => $codUnavailableReason,
+                        ])>
+                            <input type="radio" name="payment_method" value="cod" class="mt-1 text-stone-900" @checked($selectedMethod === 'cod')
+                                   @disabled($codUnavailableReason) @if ($codUnavailableReason) aria-describedby="cod-unavailable" @endif>
                             <span class="text-sm">
                                 <span class="block font-semibold">Cash on Delivery</span>
-                                <span class="mt-0.5 block text-stone-600">Pay in cash when your shoes arrive.</span>
+                                @if ($codUnavailableReason)
+                                    <span id="cod-unavailable" class="mt-0.5 block text-amber-800">{{ $codUnavailableReason }}</span>
+                                @else
+                                    <span class="mt-0.5 block text-stone-600">Pay in cash when your shoes arrive.</span>
+                                @endif
                             </span>
                         </label>
                     </div>

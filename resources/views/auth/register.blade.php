@@ -4,6 +4,8 @@
 
         <x-form.field name="name" label="Name" required autofocus autocomplete="name" />
         <x-form.field name="email" label="Email" type="email" required autocomplete="username" />
+        <x-form.field name="phone" label="Phone" type="tel" required maxlength="30" autocomplete="tel" placeholder="012-345 6789" />
+        <p class="-mt-2 mb-4 text-xs text-stone-500">Malaysian number. One account per phone number. You can add delivery addresses later in your address book.</p>
         <x-form.field name="password" label="Password" type="password" required autocomplete="new-password" />
         <x-form.field name="password_confirmation" label="Confirm password" type="password" required autocomplete="new-password" />
 

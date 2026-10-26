@@ -123,13 +123,14 @@ class OrderManagementTest extends TestCase
         $completed = Order::factory()->status(OrderStatus::Completed)->create();
 
         $this->actingAs($this->admin)->get(route('admin.orders.show', $paid))
-            ->assertSee('<option value="shipped"', false)
-            ->assertSee('<option value="cancelled"', false)
-            ->assertDontSee('<option value="pending"', false);
+            ->assertSee('name="status" value="shipped"', false)
+            ->assertSee('name="status" value="cancelled"', false)
+            ->assertDontSee('name="status" value="pending"', false)
+            ->assertSee(['Mark shipped', 'Cancel order']);
 
         $this->actingAs($this->admin)->get(route('admin.orders.show', $completed))
             ->assertSee('can no longer be changed')
-            ->assertDontSee('Update status');
+            ->assertDontSee('name="status"', false);
     }
 
     // --- Status changes ---------------------------------------------------
@@ -189,7 +190,7 @@ class OrderManagementTest extends TestCase
     {
         $order = Order::factory()->create();
 
-        $this->changeStatus($order, 'refunded')->assertSessionHasErrors('status');
+        $this->changeStatus($order, 'lost-in-transit')->assertSessionHasErrors('status');
 
         $this->assertSame(OrderStatus::Pending, $order->fresh()->status);
     }

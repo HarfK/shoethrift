@@ -7,10 +7,14 @@ enum OrderStatus: string
     case Pending = 'pending';
     case Paid = 'paid';
     case Shipped = 'shipped';
+    // Cash on Delivery only: the parcel arrived, cash not yet collected.
+    case Delivered = 'delivered';
     case Completed = 'completed';
     case Cancelled = 'cancelled';
     // The online payment didn't go through. Set only by the system (Order::markPaymentFailed()).
     case Failed = 'failed';
+    // The whole paid amount was refunded through a return request (see App\Models\ReturnRequest).
+    case Refunded = 'refunded';
 
     public function label(): string
     {
@@ -31,7 +35,8 @@ enum OrderStatus: string
             self::Pending => [self::Paid, self::Cancelled],
             self::Paid => [self::Shipped, self::Cancelled],
             self::Shipped => [self::Completed],
-            self::Completed, self::Cancelled, self::Failed => [],
+            self::Delivered => [self::Completed],
+            self::Completed, self::Cancelled, self::Failed, self::Refunded => [],
         };
     }
 

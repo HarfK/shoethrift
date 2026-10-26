@@ -46,9 +46,9 @@ class CheckoutTest extends TestCase
     private function placeOrder(array $overrides = [])
     {
         return $this->post(route('checkout.store'), [
-            'shipping_name' => 'Aisyah Rahman',
-            'shipping_phone' => '012-345 6789',
-            'shipping_address' => "12 Jalan Bunga\n40100 Shah Alam, Selangor",
+            'recipient_name' => 'Aisyah Rahman',
+            'phone' => '012-345 6789',
+            'line1' => '12 Jalan Bunga', 'postcode' => '40100', 'city' => 'Shah Alam', 'state' => 'Selangor',
             'expected_total' => $this->expectedTotal(),
             'payment_method' => 'cod', // online payment is covered in HitPayPaymentTest
             ...$overrides,
@@ -92,9 +92,10 @@ class CheckoutTest extends TestCase
         $this->addToCart($this->dunk);
         $this->addToCart($this->samba, 2);
 
+        // No saved addresses yet: the manual form, with the account name and phone filled in.
         $this->get(route('checkout.create'))
             ->assertOk()
-            ->assertSee(['value="Aisyah Rahman"', 'value="012-345 6789"', '12 Jalan Bunga'], false)
+            ->assertSee(['value="Aisyah Rahman"', 'value="012-345 6789"', 'name="address_id" value="new"'], false)
             ->assertSee(['RM 599.80', 'RM 10.00', 'RM 609.80'])
             ->assertSee('name="expected_total" value="609.80"', false);
     }
@@ -104,11 +105,14 @@ class CheckoutTest extends TestCase
         $this->actingAs($this->customer);
         $this->addToCart($this->dunk);
 
-        $this->placeOrder(['shipping_name' => '', 'shipping_phone' => '12345', 'shipping_address' => 'short'])
+        $this->placeOrder(['recipient_name' => '', 'phone' => '12345', 'line1' => '', 'postcode' => '401', 'city' => '', 'state' => 'Bangkok'])
             ->assertSessionHasErrors([
-                'shipping_name',
-                'shipping_phone' => 'Enter a Malaysian phone number, e.g. 012-345 6789.',
-                'shipping_address',
+                'recipient_name',
+                'phone' => 'Enter a Malaysian phone number, e.g. 012-345 6789.',
+                'line1',
+                'postcode' => 'Malaysian postcodes have 5 digits.',
+                'city',
+                'state' => 'Choose a state from the list.',
             ]);
 
         $this->assertDatabaseCount('orders', 0);
@@ -121,7 +125,7 @@ class CheckoutTest extends TestCase
 
         foreach (['0123456789', '012-345 6789', '011-1234 5678', '+60 12-345 6789', '+60123456789', '03-1234 5678'] as $phone) {
             $this->addToCart($this->samba);
-            $this->placeOrder(['shipping_phone' => $phone])->assertSessionHasNoErrors();
+            $this->placeOrder(['phone' => $phone])->assertSessionHasNoErrors();
         }
 
         $this->assertDatabaseCount('orders', 6);
@@ -207,21 +211,15 @@ class CheckoutTest extends TestCase
         $this->get(route('checkout.create'))->assertSee('RM 330.00');
     }
 
-    public function test_saving_details_to_profile_is_optional(): void
+    public function test_checkout_never_changes_the_account(): void
     {
         $this->actingAs($this->customer);
         $this->addToCart($this->samba);
-        $this->placeOrder(['shipping_phone' => '019-888 7777', 'shipping_address' => 'No. 5, Jalan Ampang, 50450 Kuala Lumpur']);
-
-        $this->assertSame('012-345 6789', $this->customer->fresh()->phone, 'Not saved without the box ticked.');
-
-        $this->addToCart($this->samba);
-        $this->placeOrder(['shipping_phone' => '019-888 7777', 'shipping_address' => 'No. 5, Jalan Ampang, 50450 Kuala Lumpur', 'save_details' => '1']);
+        $this->placeOrder(['recipient_name' => 'Puan Aminah', 'phone' => '019-888 7777', 'save_address' => '1']);
 
         $this->customer->refresh();
-        $this->assertSame('019-888 7777', $this->customer->phone);
-        $this->assertSame('No. 5, Jalan Ampang, 50450 Kuala Lumpur', $this->customer->address);
-        $this->assertSame('Aisyah Rahman', $this->customer->name, 'The account name is never changed by checkout.');
+        $this->assertSame('012-345 6789', $this->customer->phone, 'The account phone is managed on the profile.');
+        $this->assertSame('Aisyah Rahman', $this->customer->name);
     }
 
     public function test_order_numbers_are_unique(): void
@@ -268,9 +266,13 @@ class CheckoutTest extends TestCase
 
         // Daniel then submits the checkout page he already had open.
         $this->actingAs($daniel);
-        $this->placeOrder(['shipping_name' => 'Daniel', 'expected_total' => $danielsShownTotal])
+        $this->placeOrder(['recipient_name' => 'Daniel', 'expected_total' => $danielsShownTotal])
             ->assertRedirect(route('cart.index'))
-            ->assertSessionHas('error', 'Sorry, Nike Dunk Low (UK 8.5) was just bought by someone else and was removed from your cart. Please review your cart before checking out.');
+            ->assertSessionHas('error', "Your order wasn't placed because your cart changed. Nothing was charged. Please review your cart and check out again.");
+
+        $this->get(route('cart.index'))
+            ->assertSee('Sorry, someone else just bought Nike Dunk Low (UK 8.5), so we removed it from your cart.')
+            ->assertSee('See other UK 8.5 shoes');
 
         $this->assertSame(1, Order::count());
         $this->assertSame($this->customer->id, Order::sole()->user_id);
@@ -330,7 +332,7 @@ class CheckoutTest extends TestCase
     {
         $this->actingAs($this->customer);
         $this->addToCart($this->dunk);
-        $this->placeOrder(['shipping_name' => 'Puan Aminah', 'shipping_phone' => '019-111 2222']);
+        $this->placeOrder(['recipient_name' => 'Puan Aminah', 'phone' => '019-111 2222']);
         $order = Order::sole();
 
         $this->actingAs(User::factory()->admin()->create())

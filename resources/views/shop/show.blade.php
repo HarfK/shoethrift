@@ -55,12 +55,25 @@
                         <span class="rounded-full bg-stone-900 px-3 py-1 text-xs font-bold uppercase tracking-wider text-white">Sold</span>
                     @endunless
                 </div>
+                @if ($product->reviews_count)
+                    <a href="#reviews" class="mt-2 inline-flex items-center gap-2 text-sm text-stone-700 hover:underline">
+                        <x-star-rating :value="$product->rating_avg" />
+                        <span>{{ number_format((float) $product->rating_avg, 1) }} · {{ $product->reviews_count }} {{ str('review')->plural($product->reviews_count) }}</span>
+                    </a>
+                @endif
 
                 <dl class="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border border-stone-200 bg-white p-5 text-sm">
                     <div><dt class="text-stone-500">Size</dt><dd class="font-medium">{{ $product->size_label }}</dd></div>
                     <div><dt class="text-stone-500">Condition</dt><dd class="font-medium">{{ $product->condition->label() }}</dd></div>
                     <div><dt class="text-stone-500">Colour</dt><dd class="font-medium">{{ $product->color ?: '—' }}</dd></div>
                     <div><dt class="text-stone-500">Category</dt><dd class="font-medium">{{ $product->category->name }}</dd></div>
+                    <div><dt class="text-stone-500">Material</dt><dd class="font-medium">{{ $product->material ?: 'Not specified' }}</dd></div>
+                    <div>
+                        <dt class="text-stone-500">Insole length</dt>
+                        <dd class="font-medium">{{ $product->insole_length_cm ? number_format((float) $product->insole_length_cm, 1).' cm' : 'Not specified' }}</dd>
+                    </div>
+                    <div><dt class="text-stone-500">Sole</dt><dd class="font-medium">{{ $product->sole_condition?->label() ?? 'Not specified' }}</dd></div>
+                    <div><dt class="text-stone-500">Box</dt><dd class="font-medium">{{ $product->box_included ? 'Original box included' : 'No box' }}</dd></div>
                     <div class="col-span-2">
                         <dt class="text-stone-500">Availability</dt>
                         <dd @class(['font-medium', 'text-emerald-700' => $available, 'text-stone-900' => ! $available])>
@@ -112,6 +125,24 @@
                     @endif
                 </div>
 
+                @if ($product->insole_length_cm)
+                    <p class="mt-3 text-xs text-stone-500">Tip: measure the insole of a pair that fits you well and compare it with {{ number_format((float) $product->insole_length_cm, 1) }} cm.</p>
+                @endif
+
+                @if ($product->wear_notes)
+                    <div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" data-wear-notes>
+                        <h2 class="font-semibold">Wear &amp; defects</h2>
+                        <p class="mt-1 whitespace-pre-line">{{ $product->wear_notes }}</p>
+                    </div>
+                @endif
+
+                @if ($product->authenticity_notes)
+                    <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950" data-authenticity-notes>
+                        <h2 class="font-semibold">Authenticity</h2>
+                        <p class="mt-1 whitespace-pre-line">{{ $product->authenticity_notes }}</p>
+                    </div>
+                @endif
+
                 @if ($product->description)
                     <div class="mt-8">
                         <h2 class="text-base font-semibold">Description</h2>
@@ -120,5 +151,69 @@
                 @endif
             </div>
         </div>
+
+        {{-- Rule-based recommendations (App\Services\Recommendations\SimilarProducts). --}}
+        @if ($recommendations->isNotEmpty())
+            <section class="mt-12 border-t border-stone-200 pt-8" aria-labelledby="recommendations-heading" data-recommendations>
+                <h2 id="recommendations-heading" class="text-xl font-bold tracking-tight">{{ $available ? 'You may also like' : 'This pair is sold. You may also like' }}</h2>
+                <p class="mt-1 text-sm text-stone-600">Picked by size, category, brand, price and condition.</p>
+                <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                    @foreach ($recommendations as $recommended)
+                        <x-product-card :product="$recommended" :reasons="$recommended->recommendation_reasons" />
+                    @endforeach
+                </div>
+            </section>
+        @endif
+
+        {{-- Reviews from verified buyers (visible ones only). --}}
+        <section id="reviews" class="mt-12 scroll-mt-24 border-t border-stone-200 pt-8" aria-labelledby="reviews-heading">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+                <h2 id="reviews-heading" class="text-xl font-bold tracking-tight">Reviews</h2>
+                @if ($reviewableItem)
+                    <a href="{{ route('account.reviews.create', [$reviewableItem->order->order_number, $reviewableItem->id]) }}"
+                       class="rounded-md bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-700">You bought this pair: write a review</a>
+                @endif
+            </div>
+
+            @if ($product->reviews_count)
+                <div class="mt-4 grid gap-8 md:grid-cols-[16rem_1fr]">
+                    <div>
+                        <p class="text-4xl font-bold tabular-nums">{{ number_format((float) $product->rating_avg, 1) }}<span class="text-lg font-normal text-stone-500"> / 5</span></p>
+                        <x-star-rating :value="$product->rating_avg" size="size-5" class="mt-1" />
+                        <p class="mt-1 text-sm text-stone-600">{{ $product->reviews_count }} {{ str('review')->plural($product->reviews_count) }} from verified buyers</p>
+                        <dl class="mt-4 space-y-1.5 text-sm" data-rating-breakdown>
+                            @foreach ($ratingBreakdown as $stars => $count)
+                                <div class="flex items-center gap-2">
+                                    <dt class="w-10 shrink-0 text-stone-600">{{ $stars }} ★</dt>
+                                    <dd class="h-2 flex-1 overflow-hidden rounded-full bg-stone-200" aria-hidden="true">
+                                        <span class="block h-full bg-amber-500" style="width: {{ $product->reviews_count ? round($count / $product->reviews_count * 100) : 0 }}%"></span>
+                                    </dd>
+                                    <dd class="w-6 text-right tabular-nums text-stone-600">{{ $count }}<span class="sr-only"> {{ str('review')->plural($count) }} with {{ $stars }} {{ str('star')->plural($stars) }}</span></dd>
+                                </div>
+                            @endforeach
+                        </dl>
+                    </div>
+
+                    <div>
+                        <ul class="divide-y divide-stone-200">
+                            @foreach ($reviews as $review)
+                                <li class="py-4 first:pt-0" data-review="{{ $review->id }}">
+                                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                        <x-star-rating :value="$review->rating" />
+                                        <span class="text-sm font-semibold">{{ $review->reviewerName() }}</span>
+                                        <span class="rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-800">Verified purchase</span>
+                                    </div>
+                                    <p class="mt-1 text-xs text-stone-500">{{ $review->created_at->shopDate() }} · bought in {{ $product->size_label }}</p>
+                                    <p class="mt-2 whitespace-pre-line text-sm text-stone-800">{{ $review->comment }}</p>
+                                </li>
+                            @endforeach
+                        </ul>
+                        <div class="mt-4">{{ $reviews->links() }}</div>
+                    </div>
+                </div>
+            @else
+                <p class="mt-3 text-sm text-stone-600">No reviews yet. Reviews come only from customers who bought this pair.</p>
+            @endif
+        </section>
     </div>
 </x-layouts.shop>

@@ -63,11 +63,13 @@
                 @auth
                     <details class="relative">
                         <summary class="flex cursor-pointer list-none items-center gap-1 rounded-md px-2 py-1.5 text-sm hover:bg-stone-100">
-                            <svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+                            <x-avatar :user="auth()->user()" class="size-7 text-xs" />
                             <span class="hidden max-w-32 truncate sm:inline">{{ auth()->user()->name }}</span>
                         </summary>
                         <div class="absolute right-0 mt-2 w-52 rounded-lg border border-stone-200 bg-white py-1 shadow-lg">
                             <p class="truncate border-b border-stone-100 px-4 py-2 text-xs text-stone-500">{{ auth()->user()->email }}</p>
+                            <a href="{{ route('account.profile') }}" class="block px-4 py-2 text-sm hover:bg-stone-50">My profile</a>
+                            <a href="{{ route('account.addresses.index') }}" class="block px-4 py-2 text-sm hover:bg-stone-50">My addresses</a>
                             <a href="{{ route('account.orders.index') }}" class="block px-4 py-2 text-sm hover:bg-stone-50">My orders</a>
                             @if (auth()->user()->isAdmin())
                                 <a href="{{ route('admin.dashboard') }}" class="block px-4 py-2 text-sm hover:bg-stone-50">Admin dashboard</a>
@@ -94,6 +96,20 @@
     </header>
 
     <main id="main" class="flex-1">
+        @auth
+            @unless (auth()->user()->hasVerifiedEmail() || request()->routeIs('verification.*'))
+                <div class="border-b border-amber-200 bg-amber-50 print:hidden" role="status">
+                    <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm text-amber-900 sm:px-6">
+                        <span>Please verify your email address ({{ auth()->user()->email }}) before checking out.</span>
+                        <form method="POST" action="{{ route('verification.send') }}">
+                            @csrf
+                            <button type="submit" class="font-semibold underline">Resend verification link</button>
+                        </form>
+                    </div>
+                </div>
+            @endunless
+        @endauth
+
         @if (session('success') || session('error') || $cartNotices)
             <div class="mx-auto max-w-7xl space-y-2 px-4 pt-6 sm:px-6 print:hidden">
                 @if (session('success'))
@@ -108,7 +124,12 @@
                     <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{{ session('error') }}</div>
                 @endif
                 @foreach ($cartNotices as $notice)
-                    <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">{{ $notice }}</div>
+                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
+                        <span>{{ $notice->message }}</span>
+                        @if ($notice->linkUrl)
+                            <a href="{{ $notice->linkUrl }}" class="font-semibold underline">{{ $notice->linkLabel }}</a>
+                        @endif
+                    </div>
                 @endforeach
             </div>
         @endif
@@ -117,7 +138,7 @@
     </main>
 
     <footer class="mt-16 border-t border-stone-200 bg-white print:hidden">
-        <div class="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-3 sm:px-6">
+        <div class="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-5">
             <div>
                 <p class="text-lg font-bold">{{ config('app.name', 'ShoeThrift') }}</p>
                 <p class="mt-2 max-w-xs text-sm text-stone-600">Your platform for buying pre-loved, authentic shoes in Malaysia.</p>
@@ -127,6 +148,22 @@
                 <ul class="mt-3 space-y-2 text-sm text-stone-600">
                     <li><a href="{{ route('home') }}" class="hover:text-emerald-700">Home</a></li>
                     <li><a href="{{ route('shop.index') }}" class="hover:text-emerald-700">Shop all shoes</a></li>
+                </ul>
+            </nav>
+            <nav aria-label="Help">
+                <h2 class="text-sm font-semibold">Help</h2>
+                <ul class="mt-3 space-y-2 text-sm text-stone-600">
+                    <li><a href="{{ route('pages.customer-service') }}" class="hover:text-emerald-700">Customer Service</a></li>
+                    <li><a href="{{ route('pages.faq') }}" class="hover:text-emerald-700">FAQ</a></li>
+                    <li><a href="{{ route('pages.shipping') }}" class="hover:text-emerald-700">Shipping Policy</a></li>
+                    <li><a href="{{ route('pages.returns') }}" class="hover:text-emerald-700">Return &amp; Refund Policy</a></li>
+                </ul>
+            </nav>
+            <nav aria-label="Legal">
+                <h2 class="text-sm font-semibold">Legal</h2>
+                <ul class="mt-3 space-y-2 text-sm text-stone-600">
+                    <li><a href="{{ route('pages.terms') }}" class="hover:text-emerald-700">Terms &amp; Conditions</a></li>
+                    <li><a href="{{ route('pages.privacy') }}" class="hover:text-emerald-700">Privacy Policy</a></li>
                 </ul>
             </nav>
             <nav aria-label="Categories">

@@ -3,16 +3,16 @@
 @use('App\Enums\PaymentMethod')
 
 @php
-    // Cash on Delivery has no separate "paid" step: the cash is collected on delivery (completed).
+    // Cash on Delivery: the cash is collected after delivery (completed = cash collected).
     $steps = $paymentMethod === PaymentMethod::CashOnDelivery
-        ? [OrderStatus::Pending->value => 'Placed', OrderStatus::Shipped->value => 'Shipped', OrderStatus::Completed->value => 'Delivered & paid']
+        ? [OrderStatus::Pending->value => 'Placed', OrderStatus::Shipped->value => 'Shipped', OrderStatus::Delivered->value => 'Delivered', OrderStatus::Completed->value => 'Cash collected']
         : [OrderStatus::Pending->value => 'Placed', OrderStatus::Paid->value => 'Paid', OrderStatus::Shipped->value => 'Shipped', OrderStatus::Completed->value => 'Completed'];
     $reached = array_search($status->value, array_keys($steps), true);
 @endphp
 
 {{-- Customer-facing order tracking (proposal use case "View Order Tracking"). --}}
-@if ($status === OrderStatus::Cancelled || $status === OrderStatus::Failed)
-    {{-- The status page explains Cancelled / Failed in its own banner; no progress bar for closed orders. --}}
+@if (in_array($status, [OrderStatus::Cancelled, OrderStatus::Failed, OrderStatus::Refunded], true))
+    {{-- The status page explains Cancelled / Failed / Refunded in its own banner; no progress bar for closed orders. --}}
 @else
     <ol {{ $attributes->class(['grid gap-2', 'grid-cols-3' => count($steps) === 3, 'grid-cols-4' => count($steps) === 4]) }} aria-label="Order progress">
         @foreach ($steps as $label)

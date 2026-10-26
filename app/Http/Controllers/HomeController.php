@@ -15,6 +15,7 @@ class HomeController extends Controller
         return view('home', [
             'newArrivals' => Product::available()
                 ->with(['primaryImage', 'category'])
+                ->withRatingSummary()
                 ->latest()
                 ->latest('id')
                 ->limit(self::NEW_ARRIVALS)

@@ -1,4 +1,10 @@
-@props(['order'])
+@props(['order', 'reviewLinks' => false])
+
+@php
+    // On the customer's order page: "Write a review" per eligible pair, or the review already written.
+    $reviewableIds = $reviewLinks ? $order->reviewableItems()->pluck('id')->all() : [];
+    $reviewsByProduct = $reviewLinks ? $order->reviews->keyBy('product_id') : collect();
+@endphp
 
 {{-- Items with the prices actually paid (order_items.price), plus subtotal, shipping and total. --}}
 <section {{ $attributes->class('rounded-xl border border-stone-200 bg-white') }} aria-label="Items">
@@ -15,6 +21,17 @@
                         <p class="text-xs font-medium uppercase tracking-wide text-stone-500">{{ $item->product->brand }}</p>
                         <p class="font-semibold">{{ $item->product->name }}</p>
                         <p class="text-sm text-stone-600">{{ $item->product->size_label }} · Qty {{ $item->quantity }} × RM {{ number_format($item->price, 2) }}</p>
+                        @if ($review = $reviewsByProduct->get($item->product_id))
+                            <p class="mt-1 flex flex-wrap items-center gap-2 text-sm text-stone-600">
+                                <span>Your review:</span> <x-star-rating :value="$review->rating" />
+                                @if ($review->isHidden())
+                                    <span class="text-xs text-stone-500">(hidden by ShoeThrift)</span>
+                                @endif
+                            </p>
+                        @elseif (in_array($item->id, $reviewableIds, true))
+                            <a href="{{ route('account.reviews.create', [$order->order_number, $item->id]) }}"
+                               class="mt-1 inline-block text-sm font-semibold text-emerald-700 hover:underline">Write a review</a>
+                        @endif
                     </div>
                     <p class="font-semibold tabular-nums">RM {{ number_format($item->price * $item->quantity, 2) }}</p>
                 </div>

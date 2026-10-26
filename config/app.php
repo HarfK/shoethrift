@@ -68,6 +68,14 @@ return [
     'timezone' => 'UTC',
 
     /*
+    | ShoeThrift: timestamps are stored (and compared) in UTC above; this is only the timezone
+    | dates are SHOWN in. Format them with the ->shopDate() / ->shopDateTime() / ->shopTime()
+    | Carbon macros (AppServiceProvider), never ->format(), so pages, receipts and emails agree.
+    */
+
+    'display_timezone' => env('APP_DISPLAY_TIMEZONE', 'Asia/Kuala_Lumpur'),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------

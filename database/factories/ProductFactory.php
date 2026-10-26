@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Enums\ProductCondition;
 use App\Enums\ProductStatus;
+use App\Enums\SoleCondition;
 use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -73,6 +74,22 @@ class ProductFactory extends Factory
             'condition' => fake()->randomElement(ProductCondition::cases()),
             'size' => fake()->randomElement(range(3, 12, 0.5)),
             'color' => fake()->randomElement(['Black', 'White', 'Black/White', 'Red/White/Black', 'Navy', 'Grey', 'Beige', 'Brown', 'Green/White']),
+            'material' => fake()->randomElement(['Leather', 'Leather', 'Suede', 'Canvas', 'Mesh / Knit', 'Synthetic']),
+            // Roughly UK size + 18 cm, which is how long a UK insole runs.
+            'insole_length_cm' => fn (array $attributes) => round((float) $attributes['size'] + 18 + fake()->randomFloat(1, -0.4, 0.4), 1),
+            'sole_condition' => fake()->randomElement(SoleCondition::cases()),
+            'box_included' => fake()->boolean(35),
+            'wear_notes' => fake()->optional(0.7)->randomElement([
+                'Light creasing on the toe box. Small scuff on the left heel.',
+                'Minor yellowing on the midsole. No tears.',
+                'Faint marks on the suede, cleaned. Laces replaced.',
+                'Outsole worn at the heels, upper in great shape.',
+            ]),
+            'authenticity_notes' => fake()->optional(0.6)->randomElement([
+                'Checked style code on the tongue label against the brand database.',
+                'Stitching, insole print and size tag match a retail pair.',
+                'Bought from an authorised store; original receipt seen.',
+            ]),
             'stock' => 1,
             'status' => ProductStatus::Available,
         ];

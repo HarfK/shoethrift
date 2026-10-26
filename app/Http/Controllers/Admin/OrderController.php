@@ -23,7 +23,8 @@ class OrderController extends Controller
         $payment = PaymentMethod::tryFrom($request->string('payment')->toString());
 
         $orders = Order::query()
-            ->with('user')
+            // Each customer's failed COD count in the same query, for the "N failed COD" badge.
+            ->with(['user' => fn ($query) => $query->withCount(['orders as failed_cod_count' => fn ($query) => $query->failedCodDelivery()])])
             ->withCount('items')
             ->when($search !== '', fn ($query) => $query->where(fn ($query) => $query
                 ->where('order_number', 'like', '%'.$search.'%')
@@ -48,7 +49,7 @@ class OrderController extends Controller
     public function show(Order $order): View
     {
         return view('admin.orders.show', [
-            'order' => $order->load(['user', 'items.product.primaryImage']),
+            'order' => $order->load(['user', 'items.product.primaryImage', 'returnRequest']),
         ]);
     }
 
@@ -62,9 +63,11 @@ class OrderController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        $message = $status === OrderStatus::Cancelled
-            ? "Order {$order->order_number} was cancelled and its items were returned to stock."
-            : "Order {$order->order_number} is now {$status->label()}.";
+        $message = match (true) {
+            $order->isFailedDelivery() => "Order {$order->order_number} was marked as a failed delivery: it's cancelled and its items were returned to stock.",
+            $status === OrderStatus::Cancelled => "Order {$order->order_number} was cancelled and its items were returned to stock.",
+            default => "Order {$order->order_number} is now {$order->statusLabel()}.",
+        };
 
         return redirect()->route('admin.orders.show', $order)->with('success', $message);
     }

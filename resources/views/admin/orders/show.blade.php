@@ -1,19 +1,35 @@
 @use('App\Enums\PaymentMethod')
+@use('App\Enums\OrderStatus')
 @php($transitions = $order->allowedTransitions())
 
 <x-layouts.admin :title="'Order '.$order->order_number">
     <a href="{{ route('admin.orders.index') }}" class="text-sm text-stone-600 hover:underline">&larr; Orders</a>
     <div class="mt-2 mb-6 flex flex-wrap items-center gap-3">
         <h1 class="text-2xl font-semibold">Order {{ $order->order_number }}</h1>
-        <x-order-status-badge :status="$order->status" />
+        <x-order-status-badge :order="$order" />
     </div>
-    <p class="-mt-4 mb-6 text-sm text-stone-500">Placed {{ $order->created_at->format('j M Y, g:i a') }}</p>
+    <p class="-mt-4 mb-6 text-sm text-stone-500">
+        Placed {{ $order->created_at->shopDateTime() }}
+        @if ($order->isFailedDelivery())
+            · <span class="text-red-700">Delivery failed {{ $order->delivery_failed_at->shopDateTime() }}</span>
+        @endif
+    </p>
 
     @if ($order->needsRefund())
         <div class="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
             <strong>Payment received after the order was {{ strtolower($order->status->label()) }}, refund needed.</strong>
-            HitPay confirmed a payment of RM {{ number_format($order->total, 2) }} on {{ $order->paid_at->format('j M Y, g:i a') }}
+            HitPay confirmed a payment of RM {{ number_format($order->total, 2) }} on {{ $order->paid_at->shopDateTime() }}
             (payment request {{ $order->gateway_reference }}). Refund it from the HitPay dashboard.
+        </div>
+    @endif
+
+    @if ($order->returnRequest)
+        <div class="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-md border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
+            <span>
+                <strong>{{ $order->returnRequest->status->label() }}</strong>
+                @if ((float) $order->refunded_amount > 0) · RM {{ number_format($order->refunded_amount, 2) }} refunded @endif
+            </span>
+            <a href="{{ route('admin.returns.show', $order->returnRequest) }}" class="font-semibold underline">View return</a>
         </div>
     @endif
 
@@ -74,21 +90,32 @@
             <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
                 <h2 class="mb-3 text-base font-semibold">Status</h2>
                 @if ($transitions === [])
-                    <p class="text-sm text-stone-600">This order is {{ strtolower($order->status->label()) }}, so its status can no longer be changed.</p>
+                    <p class="text-sm text-stone-600">This order is {{ strtolower($order->statusLabel()) }}, so its status can no longer be changed.</p>
                 @else
-                    <form method="POST" action="{{ route('admin.orders.status', $order) }}"
-                          onsubmit="return this.status.value !== 'cancelled' || confirm('Cancel this order? Its items will be returned to stock.')">
-                        @csrf
-                        @method('PATCH')
-                        <x-form.select name="status" label="Change status to" :value="$transitions[0]->value"
-                                       :options="collect($transitions)->mapWithKeys(fn ($s) => [$s->value => $s->label()])" />
-                        <button type="submit" class="w-full rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Update status</button>
-                    </form>
+                    {{-- One button per allowed step; each posts the target status. Cancelling asks first. --}}
+                    <div class="flex flex-col gap-2">
+                        @foreach ($transitions as $to)
+                            {{-- Inline @php only: this template already uses @php(), which can't be mixed with @php blocks. --}}
+                            @php($isCancel = $to === OrderStatus::Cancelled)
+                            @php($confirm = ! $isCancel ? null : ($order->cancellingMeansFailedDelivery() ? 'Mark this as a failed delivery? The order will be cancelled, its items returned to stock, and it counts against the customer’s Cash on Delivery record.' : 'Cancel this order? Its items will be returned to stock.'))
+                            <form method="POST" action="{{ route('admin.orders.status', $order) }}"
+                                  @if ($confirm) onsubmit="return confirm(@js($confirm))" @endif>
+                                @csrf
+                                @method('PATCH')
+                                <input type="hidden" name="status" value="{{ $to->value }}">
+                                <button type="submit" @class([
+                                    'w-full rounded-md px-4 py-2 text-sm font-semibold',
+                                    'border border-red-300 bg-white text-red-700 hover:bg-red-50' => $isCancel,
+                                    'bg-emerald-700 text-white hover:bg-emerald-800' => ! $isCancel,
+                                ])>{{ $order->actionLabel($to) }}</button>
+                            </form>
+                        @endforeach
+                    </div>
                     <p class="mt-3 text-xs text-stone-500">
                         @if ($order->payment_method === PaymentMethod::Online)
                             Online orders become <strong>paid</strong> only when HitPay confirms the payment. Then paid → shipped → completed.
                         @elseif ($order->payment_method === PaymentMethod::CashOnDelivery)
-                            Cash on Delivery: pending → shipped → completed (completed = cash collected). Cancel only before shipping.
+                            Cash on Delivery: pending → shipped → delivered → cash collected. "Failed delivery" (after shipping) cancels the order, restocks it and counts against the customer.
                         @else
                             Orders move pending → paid → shipped → completed, and can be cancelled only before shipping.
                         @endif
@@ -105,7 +132,7 @@
                     </div>
                     <div>
                         <dt class="text-stone-500">Paid</dt>
-                        <dd>{{ $order->paid_at ? $order->paid_at->format('j M Y, g:i a') : 'Not paid yet' }}</dd>
+                        <dd>{{ $order->paid_at ? $order->paid_at->shopDateTime() : 'Not paid yet' }}</dd>
                     </div>
                     @if ($order->payment_method === PaymentMethod::Online)
                         <div>
@@ -122,7 +149,7 @@
                         @if (! $order->paid_at && $order->payment_expires_at)
                             <div>
                                 <dt class="text-stone-500">Payment deadline</dt>
-                                <dd>{{ $order->payment_expires_at->format('j M Y, g:i a') }}</dd>
+                                <dd>{{ $order->payment_expires_at->shopDateTime() }}</dd>
                             </div>
                         @endif
                     @endif
@@ -134,7 +161,17 @@
                 <dl class="space-y-1 text-sm">
                     <div><dt class="sr-only">Name</dt><dd class="font-medium">{{ $order->user->name }}</dd></div>
                     <div><dt class="sr-only">Email</dt><dd><a href="mailto:{{ $order->user->email }}" class="text-emerald-700 hover:underline">{{ $order->user->email }}</a></dd></div>
-                    <div><dt class="sr-only">Phone</dt><dd class="text-stone-600">{{ $order->user->phone ?: 'No phone number' }}</dd></div>
+                    <div class="pt-1"><dt class="inline text-stone-500">Account phone:</dt> <dd class="inline text-stone-700">{{ $order->user->phone ?: 'Not set' }}@if ($order->user->hasVerifiedPhone()) <span class="text-xs font-medium text-emerald-700">✓ verified</span>@endif</dd></div>
+                    @php($failedCod = $order->user->failedCodCount())
+                    <div class="pt-1">
+                        <dt class="inline text-stone-500">Failed COD orders:</dt>
+                        <dd class="inline">
+                            <span @class(['font-semibold text-red-700' => $failedCod > 0, 'text-stone-700' => $failedCod === 0])>{{ $failedCod }}</span>
+                            @if ($order->user->isCodBlocked())
+                                <span class="ml-1 inline-flex rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-800 ring-1 ring-inset ring-red-600/20">COD blocked</span>
+                            @endif
+                        </dd>
+                    </div>
                 </dl>
             </section>
 
@@ -143,9 +180,7 @@
                 @if ($order->shipping_name)
                     <p class="text-sm font-medium">{{ $order->shipping_name }}</p>
                 @endif
-                @if ($order->shipping_phone)
-                    <p class="text-sm text-stone-600">{{ $order->shipping_phone }}</p>
-                @endif
+                <p class="text-sm text-stone-600">Recipient phone: {{ $order->shipping_phone ?: 'Not given' }}</p>
                 <p class="mt-2 whitespace-pre-line text-sm text-stone-700">{{ $order->shipping_address }}</p>
             </section>
         </div>

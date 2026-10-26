@@ -48,7 +48,7 @@ class AccountOrderController extends Controller
         $awaiting = $order->isAwaitingOnlinePayment();
 
         return view('account.orders.show', [
-            'order' => $order->load('items.product.primaryImage'),
+            'order' => $order->load(['items.product.primaryImage', 'returnRequest.items', 'reviews']),
             'checkUnavailable' => $syncResult === 'unreachable',
             'autoRefresh' => $awaiting && $check < self::MAX_AUTO_CHECKS,
             'nextCheckUrl' => route('account.orders.show', ['orderNumber' => $order->order_number, 'check' => $check + 1]),
