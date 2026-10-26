@@ -27,6 +27,12 @@
                                 @if ($review->isHidden())
                                     <span class="text-xs text-stone-500">(hidden by ShoeThrift)</span>
                                 @endif
+                                <a href="{{ route('account.reviews.edit', $review) }}" class="font-semibold text-emerald-700 hover:underline">Edit</a>
+                                <form method="POST" action="{{ route('account.reviews.destroy', $review) }}" class="inline" onsubmit="return confirm('Delete your review?')">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="font-semibold text-red-700 hover:underline">Delete</button>
+                                </form>
                             </p>
                         @elseif (in_array($item->id, $reviewableIds, true))
                             <a href="{{ route('account.reviews.create', [$order->order_number, $item->id]) }}"

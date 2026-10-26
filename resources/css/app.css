@@ -9,3 +9,34 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/*
+ * Review star picker (<x-review-star-picker>). Radios are in natural order 0.5 → 5.0, each followed
+ * by its half-star label, so the value never depends on this CSS. A half is lit when its radio is
+ * checked or a LATER radio is checked (:has(~ …)); while hovering, the hovered half and every
+ * half before it are lit instead.
+ */
+@layer components {
+    .star-picker input {
+        @apply sr-only;
+    }
+
+    .star-picker label {
+        @apply cursor-pointer text-stone-300;
+    }
+
+    .star-picker label svg {
+        @apply h-9 w-[18px];
+    }
+
+    .star-picker:not(:hover) input:checked + label,
+    .star-picker:not(:hover) label:has(~ input:checked),
+    .star-picker label:hover,
+    .star-picker label:has(~ label:hover) {
+        @apply text-amber-500;
+    }
+
+    .star-picker input:focus-visible + label {
+        @apply rounded-sm outline-2 outline-offset-2 outline-emerald-600;
+    }
+}

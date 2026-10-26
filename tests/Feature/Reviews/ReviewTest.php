@@ -55,6 +55,7 @@ class ReviewTest extends TestCase
     {
         return $this->actingAs($as ?? $this->customer)->post(route('account.reviews.store', [$item->order->order_number, $item->id]), [
             'rating' => 4,
+            'condition_rating' => 5,
             'comment' => 'Fits true to size and the condition matches the photos.',
             ...$fields,
         ]);
@@ -93,7 +94,7 @@ class ReviewTest extends TestCase
             ->assertSessionHas('success', 'Thanks for reviewing Nike Dunk Low!');
 
         $review = Review::sole();
-        $this->assertSame(5, $review->rating);
+        $this->assertSame('5.0', $review->rating);
         $this->assertSame([$this->customer->id, $this->dunk->id, $item->order_id], [$review->user_id, $review->product_id, $review->order_id]);
     }
 
@@ -150,7 +151,7 @@ class ReviewTest extends TestCase
         $mine = $this->purchase();
 
         $this->review($theirs)->assertNotFound();
-        $this->actingAs($this->customer)->post(route('account.reviews.store', [$mine->order->order_number, $theirs->id]), ['rating' => 5, 'comment' => 'Trying another order item.'])
+        $this->actingAs($this->customer)->post(route('account.reviews.store', [$mine->order->order_number, $theirs->id]), ['rating' => 5, 'condition_rating' => 5, 'comment' => 'Trying another order item.'])
             ->assertNotFound();
 
         $this->assertSame(0, Review::count());
@@ -188,7 +189,7 @@ class ReviewTest extends TestCase
         $item = $this->purchase();
 
         $this->review($item, ['rating' => 6, 'comment' => 'Too short'])->assertSessionHasErrors(['rating', 'comment']);
-        $this->review($item, ['rating' => 0])->assertSessionHasErrors(['rating' => 'Choose between 1 and 5 stars.']);
+        $this->review($item, ['rating' => 0])->assertSessionHasErrors(['rating' => 'Choose between half a star and 5 stars.']);
         $this->review($item, ['rating' => '', 'comment' => str_repeat('a', 1001)])->assertSessionHasErrors(['rating' => 'Choose a star rating.', 'comment']);
 
         $this->assertSame(0, Review::count());
@@ -239,7 +240,7 @@ class ReviewTest extends TestCase
 
     public function test_product_without_reviews(): void
     {
-        $this->get(route('shop.show', 'nike-dunk-low'))->assertSee('No reviews yet.')->assertDontSee('Rated ');
+        $this->get(route('shop.show', 'nike-dunk-low'))->assertSee('No reviews for this pair yet.')->assertDontSee('Rated ');
     }
 
     public function test_product_cards_show_rating_and_count_from_visible_reviews(): void
@@ -281,7 +282,7 @@ class ReviewTest extends TestCase
 
         $data = $admin->notifications()->sole()->data;
         $this->assertSame('review', $data['kind']);
-        $this->assertSame('New 2★ review on Nike Dunk Low', $data['title']);
+        $this->assertSame('New 2★ review on Nike Dunk Low (flagged)', $data['title']);
     }
 
     public function test_admin_hides_unhides_and_deletes_reviews(): void

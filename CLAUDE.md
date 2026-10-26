@@ -239,22 +239,43 @@ The tables are users → orders → order_items ← products → product_images,
 
 ## Product reviews
 
-- **Table and model:** `reviews` (`Review` model), holding user, product, order, `rating` 1–5, `comment` (10–1000 characters) and `hidden_at`.
-  - **One per product per order:** the unique `(order_id, product_id)` index enforces it. A lost double-submit race (`UniqueConstraintViolationException`) is turned into a friendly message.
-  - **No editing** after posting.
-- **Who can review:** `Order::allowsReviews()` (paid online orders: Paid / Shipped / Completed with `paid_at`; COD once Delivered or Completed; never pending, cancelled, failed or refunded) plus `Order::reviewableItems()`.
-  - **Excluded items:** pairs returned in a *refunded* return request, and products already reviewed for that order.
-  - **Single rule for every page:** `ReviewController` (customer, `/account/orders/{n}/items/{item}/review`), the order page's `<x-order-summary review-links>` and the product page's "You bought this pair" button all use it.
-- **Hidden reviews** (`Review::visible()` scope) are left out of everything public.
+- **Table and model:** `reviews` (`Review` model), holding user, product, order, `rating` **0.5–5.0 in half stars** (`decimal(2,1)`, cast `decimal:1`, so it reads as `"4.5"`), `comment` (10–1000 characters), `hidden_at`, `edited_at`, `flagged_at` and `flag_reasons` (json).
+  - **One per product per order:** the unique `(order_id, product_id)` index enforces it, so a lost double-submit race shows a friendly message.
+- **Who can review:** `Order::allowsReviews()` (paid online orders: Paid / Shipped / Completed with `paid_at`; COD once Delivered or Completed; never pending, cancelled, failed or refunded) plus `Order::reviewableItems()` (excludes pairs in a *refunded* return and products already reviewed for that order). The same rule is used on every page.
+- **Writing and editing:** `ReviewController` + `ReviewRequest` + `App\Services\Reviews\SaveReview` (the only place reviews and media are saved).
+  - **Routes:** write at `/account/orders/{n}/items/{item}/review`; edit and delete at `/account/reviews/{review}`. Only the owner can edit or delete; anyone else gets 404.
+  - **Editing** sets `edited_at`, but only if the rating, comment or media changed. Deleting removes the files, and the customer may then review again.
+- **Star picker:** `<x-review-star-picker>`, ten radios in **natural order 0.5 → 5.0** (left half and right half of each star).
+  - **Highlighting:** plain CSS in `resources/css/app.css` (`.star-picker`, `:has(~ input:checked)`).
+  - **Readout:** an `<output>` updated by one `oninput`.
+  - **Never reverse the radios and rely on CSS to flip them.** That was the "only 1 star" bug: with stale `public/build` CSS the stars rendered backwards, and the right-most star submitted 1. `HalfStarTest` checks the order.
 - **Showing ratings:**
-  - `Product::withRatingSummary()` adds `rating_avg` and `reviews_count` (visible reviews only) in the same query. Use it wherever `<x-product-card>` shows ratings (shop listing, home).
-  - `<x-star-rating :value :count>` draws partially filled stars with an accessible label ("Rated 4.3 out of 5 from 3 reviews").
-  - The product page shows the average, a 5→1 breakdown, and 10 reviews per page (`reviews_page`).
-  - Reviewers are shown as "First L." (`Review::reviewerName()`) with "Verified purchase".
-- **Admin moderation:** `/admin/reviews` (filters: visibility, rating, search).
-  - **Hide / Unhide** sets `hidden_at`.
-  - **Delete** is permanent, and the customer could then review that pair again, so prefer hiding.
-  - New reviews send an `AdminNotifier::newReview()` bell notification (kind `review`).
+  - `<x-star-rating :value [:count] [round]>` fills by width, so half stars show exactly; `round` draws averages to the nearest half (`Review::roundToHalf()`) while the label keeps the exact value.
+  - **Averages:** `Product::withRatingSummary()` for product averages; `Review::storeSummary()` for the store average (footer composer, home badge, `/reviews`).
+  - **Breakdown:** `Review::breakdown($query)` buckets 5★ = 5.0, 4★ = 4.0–4.5, …, 1★ = 0.5–1.5. It reads rows, not `pluck`, because float keys truncate.
+- **Media:** the `review_media` table (`ReviewMedia` model), up to **5 photos** (JPG/PNG/WebP, 5 MB) and **1 video** (MP4/WebM, 30 MB, ≤ 30 s), on the public disk under `reviews/{id}/`.
+  - **Video length:** `App\Services\Reviews\VideoDuration` reads it from the MP4 `mvhd` box or the WebM Info/Duration header (there's no ffmpeg). Too long → validation error. Unreadable → accepted but flagged (`video_length_unknown`). Some MP4s are detected as `application/mp4`, which is accepted together with the `.mp4` extension.
+  - **Display:** `<x-review-media>` shows thumbnails with a **CSS `:target` lightbox** (no JS) and plays the video with `<video controls>`.
+  - **Too-large uploads:** `PostTooLargeException` (above `post_max_size`, 40M on this XAMPP) redirects back with a friendly message (`bootstrap/app.php`). Recommended php.ini: `post_max_size=64M`, `upload_max_filesize=32M`.
+- **Moderation:** `/admin/reviews`.
+  - **Filters:** visible / hidden / **flagged**; star rows; search.
+  - **Whole reviews:** hide/unhide or delete.
+  - **Single photos/videos:** hide/unhide or delete. `ReviewMedia::hide()` **moves the file to the private `local` disk**, so public links stop working; unhide moves it back.
+  - **Flags:** set by `Review::refreshFlag()` after each create or edit. Reasons: rating ≤ 2, has media, edited, unknown video length. "Mark as checked" clears them, and the sidebar shows the flagged count.
+  - **Notification:** new reviews send a bell notification (kind `review`), marked "(flagged)" when flagged.
+- **Condition question:** `condition_rating`, "Condition matched the description?".
+  - **Values:** 1–5 whole numbers, labels in `Review::CONDITION_LABELS`. Required on new reviews and edits; nullable for older reviews, which averages ignore.
+  - **Shown as:** "Condition accuracy x/5" on `/reviews`, in the brand/category block and the store line; "Condition matched: n/5" on each review.
+- **Related reviews:** most pairs are one-of-a-kind, so a product page **without visible reviews of its own** shows "No reviews for this pair yet", then:
+  - the store rating line (→ `/reviews`);
+  - `<x-related-reviews>`: "What buyers say about <brand>" when **other** pairs of that brand (case-insensitive) have at least 3 public reviews, otherwise the **category**, otherwise nothing. It shows the average, count, condition accuracy and the latest 3 reviews, each linking to its product.
+  - Products with their own reviews (sold ones too) show only those.
+- **`App\Services\Reviews\ReviewStats`:** the single source for review aggregates and related reviews.
+  - **Public reviews:** `publicReviews()` = visible reviews on products that **aren't hidden**. The store page, footer and home badge use it too.
+  - **Caching:** each aggregate is one query, **cached 10 minutes**.
+  - **Clearing the cache:** the `Review` model's `saved` and `deleted` events call `forgetFor()`, which forgets the store key and **bumps version numbers** for that review's brand and category. Those keys also include the viewed product's id, and the database cache has no tags.
+  - **Privacy:** review lists load `user:id,name` only, so email, phone and address are never fetched for public pages. `RelatedReviewsTest` checks this and that the query count doesn't grow (no N+1).
+- **Store page:** `/reviews` (`StoreReviewController`) shows every visible review newest first, with the store average, total and breakdown. It's linked from the footer ("Customer reviews" plus the rating line) and the home page badge.
 
 ## Orders and categories
 
@@ -275,6 +296,6 @@ The tables are users → orders → order_items ← products → product_images,
 - **Dates and times:** stored and compared in **UTC** (`config('app.timezone')` stays `UTC`). They are displayed in `config('app.display_timezone')` (`APP_DISPLAY_TIMEZONE`, default `Asia/Kuala_Lumpur`). In views, receipts and emails, always format with the Carbon macros from `AppServiceProvider`: `->shopDate()` (26 Oct 2026), `->shopDateTime()` (26 Oct 2026, 3:45 pm) and `->shopTime()` (3:45 pm). Never use `->format()` for display. Order numbers use the Malaysian date. Future reports that group by day should group by Malaysian day.
 - Blade gotcha: a template that uses inline `@php(...)` can't also contain an `@php … @endphp` block, because the compiler pairs them wrongly. Stick to one style per file.
 
-- `tests/TestCase.php` calls `withoutVite()`, so feature tests don't need built assets. Running the app in a browser does: use `npm run dev` or `npm run build`.
+- `tests/TestCase.php` calls `withoutVite()`, so feature tests don't need built assets. Running the app in a browser does: use `npm run dev` or `npm run build`. **`public/build` goes stale whenever views or CSS gain new classes**; without `public/hot` (the dev server) the browser uses that old CSS. Rebuild after pulling changes.
 - Models use the Laravel 12 style: a `casts()` method instead of a `$casts` property, plus `HasFactory` with a `@use HasFactory<XFactory>` docblock (see `app/Models/User.php`).
 - Factories live in `database/factories` and seeders in `database/seeders`. `DatabaseSeeder` is the entry point for `db:seed`.

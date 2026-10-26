@@ -55,7 +55,9 @@ class AdminNotifier
 
     public static function newReview(Review $review): void
     {
-        self::send('review', "New {$review->rating}★ review on {$review->product->name}", route('admin.reviews.index', ['search' => $review->product->name]),
+        $stars = rtrim(rtrim((string) $review->rating, '0'), '.');
+        self::send('review', "New {$stars}★ review on {$review->product->name}".($review->isFlagged() ? ' (flagged)' : ''),
+            route('admin.reviews.index', ['search' => $review->product->name, 'visibility' => $review->isFlagged() ? 'flagged' : null]),
             (string) str($review->comment)->limit(80));
     }
 

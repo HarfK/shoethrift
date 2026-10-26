@@ -5,6 +5,7 @@ use App\Http\Middleware\EnsureUserIsAdmin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -30,5 +31,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo(fn (Request $request) => LoginController::homeFor($request->user()));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Uploads bigger than PHP's post_max_size (e.g. many review photos + a video) arrive with an
+        // empty body, so validation can't explain it. Send the user back with a clear message instead.
+        $exceptions->render(function (PostTooLargeException $e, Request $request) {
+            $limit = ini_get('post_max_size') ?: 'the server limit';
+
+            return back()->with('error', "Your upload was too large to receive (the server accepts up to {$limit} per form). Try fewer or smaller photos, or a shorter video.");
+        });
     })->create();

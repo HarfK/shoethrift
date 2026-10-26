@@ -21,7 +21,7 @@ class ReviewSeeder extends Seeder
         foreach ($orders as $order) {
             foreach ($order->items as $item) {
                 if (fake()->boolean(75)) {
-                    $review = Review::factory()->make(['rating' => fake()->randomElement([5, 5, 4, 4, 4, 3, 2])]);
+                    $review = Review::factory()->make(['rating' => fake()->randomElement([5.0, 5.0, 4.5, 4.5, 4.0, 4.0, 3.5, 3.0, 2.0])]);
                     $review->forceFill([
                         'user_id' => $order->user_id,
                         'order_id' => $order->id,

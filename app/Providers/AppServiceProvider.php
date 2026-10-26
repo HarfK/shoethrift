@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\Category;
+use App\Models\Review;
 use App\Services\ShoppingCart;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\View;
@@ -53,6 +54,7 @@ class AppServiceProvider extends ServiceProvider
                 'footerCategories' => Category::orderBy('name')->get(['name', 'slug']),
                 'cartCount' => $cart->count(),
                 'cartNotices' => [...session('cart_notices', []), ...$cart->pullNotices()],
+                'storeRating' => Review::storeSummary(),
             ]);
         });
     }

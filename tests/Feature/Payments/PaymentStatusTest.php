@@ -322,7 +322,7 @@ class PaymentStatusTest extends TestCase
 
         $this->actingAs($this->customer)->get(route('account.orders.receipt', $order->order_number))
             ->assertOk()
-            ->assertSee(['Receipt', 'TS-20261022-PAYME2', $order->created_at->format('j M Y'), $order->paid_at->format('j M Y')])
+            ->assertSee(['Receipt', 'TS-20261022-PAYME2', $order->created_at->shopDate(), $order->paid_at->shopDate()])
             ->assertSee(['Nike Dunk Low', 'Nike · UK 8.5', 'RM 300.00', 'RM 10.00', 'RM 310.00'])
             ->assertSee(['Online payment (HitPay)', 'pr-1', 'pay-pr-1'])
             ->assertSee('Print / Save as PDF')

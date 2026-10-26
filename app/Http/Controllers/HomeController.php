@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\Review;
 use Illuminate\View\View;
 
 class HomeController extends Controller
@@ -20,6 +21,7 @@ class HomeController extends Controller
                 ->latest('id')
                 ->limit(self::NEW_ARRIVALS)
                 ->get(),
+            'storeRating' => Review::storeSummary(),
             'categories' => Category::withCount(['products as available_count' => fn ($query) => $query->available()])
                 ->orderBy('name')
                 ->get(),

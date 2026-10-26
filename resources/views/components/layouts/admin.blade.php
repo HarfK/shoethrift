@@ -9,7 +9,8 @@
         ['label' => 'Reports', 'href' => route('admin.reports.index'), 'active' => request()->routeIs('admin.reports.*')],
         ['label' => 'Returns', 'href' => route('admin.returns.index'), 'active' => request()->routeIs('admin.returns.*'),
             'count' => \App\Models\ReturnRequest::whereIn('status', [\App\Enums\ReturnStatus::Requested, \App\Enums\ReturnStatus::Approved])->count()],
-        ['label' => 'Reviews', 'href' => route('admin.reviews.index'), 'active' => request()->routeIs('admin.reviews.*')],
+        ['label' => 'Reviews', 'href' => route('admin.reviews.index'), 'active' => request()->routeIs('admin.reviews.*'),
+            'count' => \App\Models\Review::whereNotNull('flagged_at')->count()],
         ['label' => 'Messages', 'href' => route('admin.messages.index'), 'active' => request()->routeIs('admin.messages.*'),
             'count' => \App\Models\ContactMessage::whereNull('read_at')->count()],
     ];

@@ -166,7 +166,7 @@ class HitPayPaymentTest extends TestCase
         $this->hitPayDown = true;
 
         $this->checkout('online')
-            ->assertRedirect(route('account.orders.show', 'TS-'.now()->format('Ymd').'-'.substr(Order::sole()->order_number, -6)))
+            ->assertRedirect(route('account.orders.show', 'TS-'.now(config('app.display_timezone'))->format('Ymd').'-'.substr(Order::sole()->order_number, -6)))
             ->assertSessionHas('error');
 
         $order = Order::sole();
@@ -308,7 +308,7 @@ class HitPayPaymentTest extends TestCase
         $this->webhook(['id' => 'pr-1']);
 
         $this->actingAs($this->customer)->get(route('account.orders.show', $order->order_number))
-            ->assertSee('Paid '.$order->fresh()->paid_at->format('j M Y'))
+            ->assertSee('Paid '.$order->fresh()->paid_at->shopDate())
             ->assertDontSee('Confirming your payment')
             ->assertDontSee('http-equiv="refresh"', false);
     }

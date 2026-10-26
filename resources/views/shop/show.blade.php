@@ -57,7 +57,7 @@
                 </div>
                 @if ($product->reviews_count)
                     <a href="#reviews" class="mt-2 inline-flex items-center gap-2 text-sm text-stone-700 hover:underline">
-                        <x-star-rating :value="$product->rating_avg" />
+                        <x-star-rating :value="$product->rating_avg" round />
                         <span>{{ number_format((float) $product->rating_avg, 1) }} · {{ $product->reviews_count }} {{ str('review')->plural($product->reviews_count) }}</span>
                     </a>
                 @endif
@@ -179,7 +179,7 @@
                 <div class="mt-4 grid gap-8 md:grid-cols-[16rem_1fr]">
                     <div>
                         <p class="text-4xl font-bold tabular-nums">{{ number_format((float) $product->rating_avg, 1) }}<span class="text-lg font-normal text-stone-500"> / 5</span></p>
-                        <x-star-rating :value="$product->rating_avg" size="size-5" class="mt-1" />
+                        <x-star-rating :value="$product->rating_avg" size="size-5" class="mt-1" round />
                         <p class="mt-1 text-sm text-stone-600">{{ $product->reviews_count }} {{ str('review')->plural($product->reviews_count) }} from verified buyers</p>
                         <dl class="mt-4 space-y-1.5 text-sm" data-rating-breakdown>
                             @foreach ($ratingBreakdown as $stars => $count)
@@ -197,14 +197,19 @@
                     <div>
                         <ul class="divide-y divide-stone-200">
                             @foreach ($reviews as $review)
-                                <li class="py-4 first:pt-0" data-review="{{ $review->id }}">
+                                <li id="review-{{ $review->id }}" class="scroll-mt-24 py-4 first:pt-0" data-review="{{ $review->id }}">
                                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
                                         <x-star-rating :value="$review->rating" />
                                         <span class="text-sm font-semibold">{{ $review->reviewerName() }}</span>
                                         <span class="rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-800">Verified purchase</span>
                                     </div>
-                                    <p class="mt-1 text-xs text-stone-500">{{ $review->created_at->shopDate() }} · bought in {{ $product->size_label }}</p>
+                                    <p class="mt-1 text-xs text-stone-500">
+                                        {{ $review->created_at->shopDate() }} · bought in {{ $product->size_label }}
+                                        @if ($review->edited_at) · <span data-edited>Edited {{ $review->edited_at->shopDate() }}</span>@endif
+                                        @if ($review->condition_rating) · Condition matched: {{ $review->condition_rating }}/5 @endif
+                                    </p>
                                     <p class="mt-2 whitespace-pre-line text-sm text-stone-800">{{ $review->comment }}</p>
+                                    <x-review-media :review="$review" />
                                 </li>
                             @endforeach
                         </ul>
@@ -212,7 +217,8 @@
                     </div>
                 </div>
             @else
-                <p class="mt-3 text-sm text-stone-600">No reviews yet. Reviews come only from customers who bought this pair.</p>
+                <p class="mt-3 text-sm text-stone-600" data-no-own-reviews>No reviews for this pair yet. Reviews come only from customers who bought it.</p>
+                <x-related-reviews :store="$storeStats" :related="$relatedReviews" class="mt-6" />
             @endif
         </section>
     </div>

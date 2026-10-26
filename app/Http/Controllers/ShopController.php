@@ -7,7 +7,9 @@ use App\Models\Category;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\Review;
 use App\Services\Recommendations\SimilarProducts;
+use App\Services\Reviews\ReviewStats;
 use App\Services\ShoppingCart;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -73,13 +75,15 @@ class ShopController extends Controller
         return view('shop.show', [
             'product' => $product,
             'inCart' => $cart->quantityOf($product),
-            'reviews' => $product->reviews()->visible()->with('user')->latest()->latest('id')
+            'reviews' => $product->reviews()->visible()->with(['user:id,name', 'visibleMedia'])->latest()->latest('id')
                 ->paginate(self::REVIEWS_PER_PAGE, pageName: 'reviews_page')->withQueryString()->fragment('reviews'),
-            // stars => count of visible reviews, 5 down to 1
-            'ratingBreakdown' => collect(range(5, 1))->mapWithKeys(fn (int $stars) => [$stars => 0])
-                ->replace($product->reviews()->visible()->selectRaw('rating, count(*) as total')->groupBy('rating')->pluck('total', 'rating')->map(fn ($count) => (int) $count)),
+            // stars => count of visible reviews, rows 5 down to 1 (4 = 4.0 to 4.5)
+            'ratingBreakdown' => collect(Review::breakdown($product->reviews()->visible())),
             'reviewableItem' => $this->reviewableItemFor($request, $product),
             'recommendations' => $similarProducts->for($product),
+            // Only for pairs without reviews of their own (most are one-of-a-kind).
+            'storeStats' => $product->reviews_count ? null : ReviewStats::store(),
+            'relatedReviews' => $product->reviews_count ? null : ReviewStats::relatedFor($product),
         ]);
     }
 

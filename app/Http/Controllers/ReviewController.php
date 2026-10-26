@@ -2,18 +2,21 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ReviewRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Review;
 use App\Services\AdminNotifier;
+use App\Services\Reviews\SaveReview;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 /**
- * Customers review pairs they bought, one review per product per order. Who may review is
- * decided by Order::reviewableItems(); the unique (order_id, product_id) index backs it up.
+ * Customers review pairs they bought (one review per product per order) and can edit or delete
+ * their own reviews. Who may review is decided by Order::reviewableItems(); the unique
+ * (order_id, product_id) index backs it up. Saving goes through SaveReview (media + flags).
  */
 class ReviewController extends Controller
 {
@@ -25,10 +28,10 @@ class ReviewController extends Controller
             return $this->notReviewable($order);
         }
 
-        return view('account.reviews.create', ['order' => $order, 'item' => $orderItem]);
+        return view('account.reviews.form', ['order' => $order, 'item' => $orderItem, 'review' => new Review]);
     }
 
-    public function store(Request $request, string $orderNumber, int $item): RedirectResponse
+    public function store(ReviewRequest $request, SaveReview $saveReview, string $orderNumber, int $item): RedirectResponse
     {
         [$order, $orderItem] = $this->reviewable($request, $orderNumber, $item);
 
@@ -36,23 +39,14 @@ class ReviewController extends Controller
             return $this->notReviewable($order);
         }
 
-        $data = $request->validate([
-            'rating' => ['required', 'integer', 'between:1,5'],
-            'comment' => ['required', 'string', 'min:'.Review::MIN_COMMENT, 'max:'.Review::MAX_COMMENT],
-        ], [
-            'rating.required' => 'Choose a star rating.',
-            'rating.between' => 'Choose between 1 and 5 stars.',
-        ]);
-
-        $review = new Review(['rating' => (int) $data['rating'], 'comment' => trim($data['comment'])]);
-        $review->forceFill([
+        $review = (new Review)->forceFill([
             'user_id' => $request->user()->id,
             'order_id' => $order->id,
             'product_id' => $orderItem->product_id,
         ]);
 
         try {
-            $review->save();
+            $this->save($request, $saveReview, $review);
         } catch (UniqueConstraintViolationException) {
             return $this->notReviewable($order); // a double submit lost the race
         }
@@ -61,6 +55,60 @@ class ReviewController extends Controller
 
         return redirect()->route('account.orders.show', $order->order_number)
             ->with('success', "Thanks for reviewing {$orderItem->product->name}!");
+    }
+
+    public function edit(Request $request, Review $review): View
+    {
+        $this->authorizeOwner($request, $review);
+        $review->load(['order', 'product.primaryImage', 'media']);
+
+        return view('account.reviews.form', [
+            'order' => $review->order,
+            'item' => $review->order->items()->where('product_id', $review->product_id)->with('product.primaryImage')->firstOrFail(),
+            'review' => $review,
+        ]);
+    }
+
+    public function update(ReviewRequest $request, SaveReview $saveReview, Review $review): RedirectResponse
+    {
+        $this->authorizeOwner($request, $review);
+
+        $this->save($request, $saveReview, $review);
+
+        return redirect()->route('account.orders.show', $review->order->order_number)
+            ->with('success', 'Your review was updated.'.($review->isHidden() ? ' It stays hidden until ShoeThrift checks it.' : ''));
+    }
+
+    public function destroy(Request $request, SaveReview $saveReview, Review $review): RedirectResponse
+    {
+        $this->authorizeOwner($request, $review);
+        $orderNumber = $review->order->order_number;
+
+        $saveReview->delete($review);
+
+        return redirect()->route('account.orders.show', $orderNumber)->with('success', 'Your review was deleted.');
+    }
+
+    private function save(ReviewRequest $request, SaveReview $saveReview, Review $review): void
+    {
+        $saveReview->handle(
+            $review,
+            (float) $request->validated('rating'),
+            (int) $request->validated('condition_rating'),
+            $request->validated('comment'),
+            $request->file('photos', []),
+            $request->file('video'),
+            $request->videoDuration,
+            $request->removeIds(),
+        );
+    }
+
+    /**
+     * Only the author may edit or delete; anyone else gets a 404 (like other customers' orders).
+     */
+    private function authorizeOwner(Request $request, Review $review): void
+    {
+        abort_unless($review->user_id === $request->user()->id, 404);
     }
 
     /**

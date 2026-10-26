@@ -21,7 +21,8 @@ class ReviewFactory extends Factory
             'order_id' => Order::factory(),
             'user_id' => fn (array $attributes) => Order::find($attributes['order_id'])->user_id,
             'product_id' => Product::factory(),
-            'rating' => fake()->numberBetween(3, 5),
+            'rating' => fake()->randomElement([3.0, 3.5, 4.0, 4.5, 5.0]),
+            'condition_rating' => fake()->randomElement([4, 5, 5, 5]),
             'comment' => fake()->randomElement([
                 'Exactly as described, and the condition is even better in person.',
                 'Fits true to size. Clean and well packed.',

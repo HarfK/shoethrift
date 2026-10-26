@@ -25,11 +25,13 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ReturnRequestController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\ShopController;
+use App\Http\Controllers\StoreReviewController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', HomeController::class)->name('home');
 Route::get('/shop', [ShopController::class, 'index'])->name('shop.index');
 Route::get('/shop/{slug}', [ShopController::class, 'show'])->name('shop.show');
+Route::get('/reviews', StoreReviewController::class)->name('reviews.index');
 
 // Content pages (footer). Policy numbers come from config/shop.php so pages and code agree.
 Route::view('/returns-refunds', 'pages.returns')->name('pages.returns');
@@ -87,6 +89,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/account/orders/{orderNumber}/return', [ReturnRequestController::class, 'store'])->name('account.returns.store');
     Route::get('/account/orders/{orderNumber}/items/{item}/review', [ReviewController::class, 'create'])->whereNumber('item')->name('account.reviews.create');
     Route::post('/account/orders/{orderNumber}/items/{item}/review', [ReviewController::class, 'store'])->whereNumber('item')->name('account.reviews.store');
+    Route::get('/account/reviews/{review}/edit', [ReviewController::class, 'edit'])->name('account.reviews.edit');
+    Route::put('/account/reviews/{review}', [ReviewController::class, 'update'])->name('account.reviews.update');
+    Route::delete('/account/reviews/{review}', [ReviewController::class, 'destroy'])->name('account.reviews.destroy');
 
     // Private files: only the customer who sent the photo, or an admin.
     Route::get('/return-photos/{photo}', [ReturnRequestController::class, 'photo'])->name('returns.photo');
@@ -131,6 +136,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('reviews', [AdminReviewController::class, 'index'])->name('reviews.index');
     Route::patch('reviews/{review}/visibility', [AdminReviewController::class, 'toggle'])->name('reviews.toggle');
     Route::delete('reviews/{review}', [AdminReviewController::class, 'destroy'])->name('reviews.destroy');
+    Route::patch('reviews/{review}/checked', [AdminReviewController::class, 'markChecked'])->name('reviews.checked');
+    Route::patch('review-media/{media}/visibility', [AdminReviewController::class, 'toggleMedia'])->name('review-media.toggle');
+    Route::delete('review-media/{media}', [AdminReviewController::class, 'destroyMedia'])->name('review-media.destroy');
 
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('reports/pdf', [ReportController::class, 'pdf'])->name('reports.pdf');

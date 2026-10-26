@@ -12,6 +12,13 @@
                 <button type="submit" class="rounded-full bg-emerald-500 px-6 py-3 font-semibold text-stone-950 hover:bg-emerald-400">Search</button>
             </form>
             <a href="{{ route('shop.index') }}" class="mt-4 inline-block text-sm font-medium text-emerald-300 hover:text-emerald-200">Or shop all shoes &rarr;</a>
+
+            @if ($storeRating['count'] > 0)
+                <a href="{{ route('reviews.index') }}" class="mt-6 flex w-fit items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm hover:bg-white/20" data-home-rating>
+                    <x-star-rating :value="$storeRating['average']" round />
+                    <span><strong>{{ number_format($storeRating['average'], 1) }}</strong> from {{ $storeRating['count'] }} verified {{ str('review')->plural($storeRating['count']) }}</span>
+                </a>
+            @endif
         </div>
     </section>
 

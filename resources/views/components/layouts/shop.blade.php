@@ -155,6 +155,7 @@
                 <ul class="mt-3 space-y-2 text-sm text-stone-600">
                     <li><a href="{{ route('pages.customer-service') }}" class="hover:text-emerald-700">Customer Service</a></li>
                     <li><a href="{{ route('pages.faq') }}" class="hover:text-emerald-700">FAQ</a></li>
+                    <li><a href="{{ route('reviews.index') }}" class="hover:text-emerald-700">Customer reviews</a></li>
                     <li><a href="{{ route('pages.shipping') }}" class="hover:text-emerald-700">Shipping Policy</a></li>
                     <li><a href="{{ route('pages.returns') }}" class="hover:text-emerald-700">Return &amp; Refund Policy</a></li>
                 </ul>
@@ -175,6 +176,13 @@
                 </ul>
             </nav>
         </div>
+        @if ($storeRating['count'] > 0)
+            <p class="flex flex-wrap items-center justify-center gap-2 border-t border-stone-100 py-3 text-sm text-stone-600" data-footer-rating>
+                <x-star-rating :value="$storeRating['average']" round />
+                <span><strong class="text-stone-900">{{ number_format($storeRating['average'], 1) }}</strong> from {{ $storeRating['count'] }} {{ str('review')->plural($storeRating['count']) }}</span>
+                <a href="{{ route('reviews.index') }}" class="font-medium text-emerald-700 hover:underline">Read reviews</a>
+            </p>
+        @endif
         <p class="border-t border-stone-100 py-4 text-center text-xs text-stone-500">&copy; {{ now()->year }} {{ config('app.name', 'ShoeThrift') }}. All rights reserved.</p>
     </footer>
 </body>
