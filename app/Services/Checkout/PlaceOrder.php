@@ -5,10 +5,12 @@ namespace App\Services\Checkout;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\ProductStatus;
+use App\Models\CartItem;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use App\Services\AdminNotifier;
+use App\Services\Cart\Reservations;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -33,6 +35,7 @@ class PlaceOrder
      * @throws ItemsUnavailableException
      * @throws PriceChangedException
      * @throws CashOnDeliveryNotAllowedException
+     * @throws ReservationExpiredException the customer's cart hold ran out
      */
     public function handle(User $user, array $quantities, array $shipping, string $expectedTotal, PaymentMethod $paymentMethod): Order
     {
@@ -44,17 +47,33 @@ class PlaceOrder
                 ->get()
                 ->keyBy('id');
 
+            // The customer's own holds (cart lines) for these pairs, locked with the products.
+            $holds = CartItem::query()
+                ->whereHas('cart', fn ($query) => $query->where('user_id', $user->id))
+                ->whereIn('product_id', array_keys($quantities))
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('product_id');
+
             $unavailable = [];
+            $expired = [];
             foreach ($quantities as $productId => $quantity) {
                 $product = $products->get($productId);
+                $label = $product ? "{$product->name} ({$product->size_label})" : 'An item in your cart';
 
-                if (! $product?->isAvailable() || $product->stock < $quantity) {
-                    $unavailable[$productId] = $product ? "{$product->name} ({$product->size_label})" : 'An item in your cart';
+                // Pairs held in other customers' carts can't be sold to this customer.
+                if (! $product?->isAvailable() || $product->stock - Reservations::heldByOthers($productId, $user->id) < $quantity) {
+                    $unavailable[$productId] = $label;
+                } elseif (! $holds->get($productId)?->reserved_until?->isFuture()) {
+                    $expired[$productId] = $label;
                 }
             }
 
             if ($unavailable !== []) {
                 throw new ItemsUnavailableException($unavailable);
+            }
+            if ($expired !== []) {
+                throw new ReservationExpiredException($expired);
             }
 
             // Work in sen (cents) to avoid floating-point rounding.
@@ -111,6 +130,10 @@ class PlaceOrder
                     AdminNotifier::lowStock($product);
                 }
             }
+
+            // The cart holds become the order: the order now holds the stock (an online order keeps
+            // it through its payment window; a failed payment returns it, see markPaymentFailed()).
+            CartItem::query()->whereIn('id', $holds->pluck('id'))->delete();
 
             // Deferred until the transaction commits (see AdminNotifier).
             AdminNotifier::newOrder($order);

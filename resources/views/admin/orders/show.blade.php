@@ -172,6 +172,15 @@
                             @endif
                         </dd>
                     </div>
+                    <div class="pt-1" data-expired-holds>
+                        <dt class="inline text-stone-500">Expired cart holds ({{ config('shop.cart.expired_window_days') }} days):</dt>
+                        <dd class="inline">
+                            <span @class(['font-semibold text-red-700' => $order->user->hasRepeatedExpiredHolds(), 'text-stone-700' => ! $order->user->hasRepeatedExpiredHolds()])>{{ $order->user->expiredHoldCount() }}</span>
+                            @if ($order->user->hasRepeatedExpiredHolds())
+                                <span class="ml-1 inline-flex rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-800 ring-1 ring-inset ring-red-600/20">Repeated</span>
+                            @endif
+                        </dd>
+                    </div>
                 </dl>
             </section>
 

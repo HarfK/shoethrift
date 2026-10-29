@@ -17,6 +17,7 @@ class HomeController extends Controller
             'newArrivals' => Product::available()
                 ->with(['primaryImage', 'category'])
                 ->withRatingSummary()
+                ->withHeldByOthers(auth()->id())
                 ->latest()
                 ->latest('id')
                 ->limit(self::NEW_ARRIVALS)

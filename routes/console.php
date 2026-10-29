@@ -11,3 +11,6 @@ Artisan::command('inspire', function () {
 // Cancel online orders not paid within the payment window (restores stock).
 // Locally: `php artisan schedule:work`. On a server: run `php artisan schedule:run` every minute (cron / Task Scheduler).
 Schedule::command('orders:expire-unpaid')->everyMinute()->withoutOverlapping();
+
+// Cart holds that ran out (also released lazily on shop requests; see App\Services\Cart\Reservations).
+Schedule::command('cart:release-expired')->everyMinute()->withoutOverlapping();

@@ -12,6 +12,7 @@ use App\Services\Checkout\CashOnDeliveryPolicy;
 use App\Services\Checkout\ItemsUnavailableException;
 use App\Services\Checkout\PlaceOrder;
 use App\Services\Checkout\PriceChangedException;
+use App\Services\Checkout\ReservationExpiredException;
 use App\Services\Payments\StartHitPayPayment;
 use App\Services\ShoppingCart;
 use Illuminate\Http\RedirectResponse;
@@ -104,6 +105,13 @@ class CheckoutController extends Controller
             return redirect()->route('cart.index')
                 ->with('error', "Your order wasn't placed because your cart changed. Nothing was charged. Please review your cart and check out again.")
                 ->with('cart_notices', $notices);
+        } catch (ReservationExpiredException $e) {
+            // Release the expired holds now so the cart explains each one ("Your reservation expired").
+            $cart->reconcile();
+
+            return redirect()->route('cart.index')
+                ->with('error', "Your reservation ran out before the order was placed, so nothing was ordered or charged. Add the pair again if it's still free.")
+                ->with('cart_notices', $cart->pullNotices());
         } catch (CashOnDeliveryNotAllowedException $e) {
             return redirect()->route('checkout.create')->withInput()->withErrors(['payment_method' => $e->getMessage()]);
         } catch (PriceChangedException $e) {

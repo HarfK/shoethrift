@@ -16,6 +16,7 @@ class CartItem extends Model
         'cart_id',
         'product_id',
         'quantity',
+        'reserved_until',
     ];
 
     /**
@@ -27,6 +28,7 @@ class CartItem extends Model
     {
         return [
             'quantity' => 'integer',
+            'reserved_until' => 'datetime',
         ];
     }
 

@@ -6,6 +6,8 @@ use App\Enums\ProductCondition;
 use App\Enums\ProductStatus;
 use App\Enums\SoleCondition;
 use App\Models\Concerns\HasUniqueSlug;
+use App\Services\Cart\ProductWatchers;
+use App\Services\Cart\Reservations;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
@@ -45,6 +47,15 @@ class Product extends Model
         'stock',
         'status',
     ];
+
+    /**
+     * Deleting a product ends any cart holds on it with a "no longer for sale" message (the
+     * cart_items rows would otherwise vanish silently through the cascade).
+     */
+    protected static function booted(): void
+    {
+        static::deleting(fn (Product $product) => app(Reservations::class)->releaseForDeletedProduct($product));
+    }
 
     /**
      * Get the attributes that should be cast.
@@ -181,6 +192,30 @@ class Product extends Model
         }
 
         $product->save();
+
+        // Customers who asked "Notify me" hear about it once the change commits.
+        ProductWatchers::notifyIfFree([$product->id]);
+    }
+
+    /**
+     * Adds `held_by_others`: pairs held in other customers' carts right now (see Reservations).
+     * Used to show "Reserved" on cards without a query per product.
+     *
+     * @param  Builder<Product>  $query
+     */
+    protected function scopeWithHeldByOthers(Builder $query, ?int $exceptUserId): void
+    {
+        $query->addSelect(['held_by_others' => Reservations::activeHolds($exceptUserId)
+            ->whereColumn('cart_items.product_id', 'products.id')
+            ->selectRaw('coalesce(sum(cart_items.quantity), 0)')]);
+    }
+
+    /**
+     * Every available pair is in other customers' carts (needs withHeldByOthers()).
+     */
+    public function isReservedByOthers(): bool
+    {
+        return $this->isAvailable() && $this->stock - (int) $this->getAttribute('held_by_others') <= 0;
     }
 
     /**

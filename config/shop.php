@@ -19,6 +19,22 @@ return [
     ],
 
     /*
+    | Timed cart holds (App\Services\Cart\Reservations). Adding a pair to the cart reserves it
+    | for hold_minutes; nobody else can add or buy it meanwhile. The hold is never extended.
+    | - max_items: most pairs (total quantity) one cart may hold at once.
+    | - adds_per_minute: rate limit on "Add to cart" per customer.
+    | - flag_expired_after / expired_window_days: admins see customers whose holds expired at
+    |   least this many times in the window.
+    */
+    'cart' => [
+        'hold_minutes' => (int) env('CART_HOLD_MINUTES', 15),
+        'max_items' => (int) env('SHOP_CART_MAX_ITEMS', 3),
+        'adds_per_minute' => (int) env('SHOP_CART_ADDS_PER_MINUTE', 10),
+        'flag_expired_after' => 3,
+        'expired_window_days' => 30,
+    ],
+
+    /*
     | Upper materials an admin can choose for a product (validated with Rule::in; shop filter).
     */
     'materials' => ['Leather', 'Suede', 'Canvas', 'Mesh / Knit', 'Synthetic', 'Rubber', 'Other'],

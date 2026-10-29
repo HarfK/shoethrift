@@ -3,67 +3,35 @@
 namespace App\Services;
 
 use App\Enums\OrderStatus;
-use App\Enums\ProductStatus;
+use App\Models\CartItem;
+use App\Models\CartRelease;
 use App\Models\Product;
 use App\Models\User;
+use App\Services\Cart\Reservations;
+use App\Services\Recommendations\SimilarProducts;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * The shopper's cart. Guests keep it in the session; logged-in users in the carts/cart_items
- * tables. The guest cart is merged into the saved cart on login (see MergeGuestCart).
+ * The logged-in customer's cart (carts / cart_items). Login is required to add: each line is a
+ * timed reservation of its pairs (see App\Services\Cart\Reservations, which does all locking).
  *
  * Bound as a scoped singleton, so notices collected while reconciling during a request are
- * shown by the shop layout in that same request.
- *
- * Adding to the cart does not reserve stock: whoever checks out first gets the pair.
+ * shown by the shop layout in that same request. Notices about holds that ended (expired, bought
+ * by someone else, no longer for sale) come from cart_releases, so they're shown even if the
+ * scheduler removed the line while the customer was away, and then marked as seen.
  */
 class ShoppingCart
 {
-    public const SESSION_KEY = 'cart';
+    /** Similar available pairs suggested under a "removed from your cart" notice. */
+    public const SIMILAR_LINKS = 3;
 
     /** @var list<CartNotice> */
     private array $notices = [];
 
-    /**
-     * @return array<int, int> product id => quantity
-     */
-    private function raw(): array
-    {
-        $items = ($user = $this->user())
-            ? ($user->cart?->items()->pluck('quantity', 'product_id')->all() ?? [])
-            : session(self::SESSION_KEY, []);
-
-        return array_map('intval', $items);
-    }
-
-    /**
-     * Set a product's quantity; 0 removes it.
-     */
-    private function put(int $productId, int $quantity): void
-    {
-        if ($user = $this->user()) {
-            $cart = $user->cart()->firstOrCreate();
-
-            $quantity > 0
-                ? $cart->items()->updateOrCreate(['product_id' => $productId], ['quantity' => $quantity])
-                : $cart->items()->where('product_id', $productId)->delete();
-
-            $user->setRelation('cart', $cart);
-
-            return;
-        }
-
-        $items = session(self::SESSION_KEY, []);
-
-        if ($quantity > 0) {
-            $items[$productId] = $quantity;
-        } else {
-            unset($items[$productId]);
-        }
-
-        session()->put(self::SESSION_KEY, $items);
-    }
+    public function __construct(private readonly Reservations $reservations) {}
 
     private function user(): ?User
     {
@@ -73,13 +41,28 @@ class ShoppingCart
     }
 
     /**
-     * Raw contents for checkout, which re-reads (and locks) the products itself.
+     * The customer's lines (including expired ones not released yet).
+     *
+     * @return EloquentCollection<int, CartItem>
+     */
+    private function items(): EloquentCollection
+    {
+        $user = $this->user();
+
+        return $user
+            ? CartItem::query()->whereHas('cart', fn ($query) => $query->where('user_id', $user->id))->orderBy('id')->get()
+            : new EloquentCollection;
+    }
+
+    /**
+     * Raw contents for checkout, which re-reads and locks the products itself and refuses
+     * expired holds (PlaceOrder).
      *
      * @return array<int, int> product id => quantity
      */
     public function quantities(): array
     {
-        return $this->raw();
+        return $this->items()->mapWithKeys(fn (CartItem $item) => [$item->product_id => $item->quantity])->all();
     }
 
     /**
@@ -87,142 +70,144 @@ class ShoppingCart
      */
     public function clear(): void
     {
-        if ($user = $this->user()) {
-            $user->cart?->items()->delete();
-
-            return;
-        }
-
-        session()->forget(self::SESSION_KEY);
-    }
-
-    public function quantityOf(Product $product): int
-    {
-        return $this->raw()[$product->id] ?? 0;
+        $this->user()?->cart?->items()->delete();
     }
 
     /**
-     * Total number of pairs in the cart.
+     * Pairs of this product the customer holds right now.
+     */
+    public function quantityOf(Product $product): int
+    {
+        return (int) $this->items()->where('product_id', $product->id)->first(fn (CartItem $item) => $item->reserved_until?->isFuture())?->quantity;
+    }
+
+    /**
+     * When the customer's hold on this product ends (null if they don't hold it).
+     */
+    public function heldUntil(Product $product): ?Carbon
+    {
+        $until = $this->items()->firstWhere('product_id', $product->id)?->reserved_until;
+
+        return $until?->isFuture() ? $until : null;
+    }
+
+    /**
+     * Total number of pairs currently held.
      */
     public function count(): int
     {
-        return array_sum($this->raw());
+        return (int) $this->items()->filter(fn (CartItem $item) => $item->reserved_until?->isFuture())->sum('quantity');
     }
 
     /**
-     * Add pairs, never exceeding the product's stock. Returns the new quantity in the cart.
+     * Reserve pairs for the logged-in customer.
+     *
+     * @throws Cart\ReservationException
      */
-    public function add(Product $product, int $quantity = 1): int
+    public function add(int $productId, int $quantity = 1): CartItem
     {
-        $newQuantity = min($this->quantityOf($product) + max($quantity, 1), $product->stock);
-        $this->put($product->id, $newQuantity);
-
-        return $newQuantity;
+        return $this->reservations->reserve($this->requireUser(), $productId, $quantity)->load('product');
     }
 
     /**
-     * Set the quantity, clamped to 1..stock. Returns the quantity actually set.
+     * Change the quantity, clamped to what's free. Keeps the hold's expiry.
+     *
+     * @throws Cart\ReservationException
      */
-    public function update(Product $product, int $quantity): int
+    public function update(int $productId, int $quantity): CartItem
     {
-        $newQuantity = max(1, min($quantity, $product->stock));
-        $this->put($product->id, $newQuantity);
-
-        return $newQuantity;
+        return $this->reservations->update($this->requireUser(), $productId, $quantity)->load('product');
     }
 
     public function remove(int $productId): void
     {
-        $this->put($productId, 0);
+        $this->reservations->remove($this->requireUser(), $productId);
     }
 
     /**
-     * Drop items that are no longer available and clamp quantities to current stock,
-     * recording a notice for the customer for each change.
+     * Release expired holds (lazily, for everyone), end this customer's lines whose pairs are gone,
+     * clamp quantities to stock, and turn the customer's unseen releases into notices.
      */
     public function reconcile(): void
     {
-        $raw = $this->raw();
+        // Lazy expiry for everyone (also for guests' page views), so holds end even without the scheduler.
+        $this->reservations->releaseExpired();
 
-        if ($raw === []) {
+        $user = $this->user();
+        if (! $user) {
             return;
         }
 
-        $products = Product::whereIn('id', array_keys($raw))->get()->keyBy('id');
+        $this->reservations->releaseUnavailableFor($user);
 
-        foreach ($raw as $productId => $quantity) {
-            $product = $products->get($productId);
-
-            if (! $product?->isAvailable()) {
-                $this->put($productId, 0);
-                $this->notices[] = $this->unavailableNotice($product);
-
-                continue;
+        foreach ($this->items()->load('product') as $item) {
+            if ($item->product && $item->quantity > $item->product->stock) {
+                $item->update(['quantity' => $item->product->stock]);
+                $this->notices[] = new CartNotice("Only {$item->product->stock} ".str('pair')->plural($item->product->stock)
+                    ." of {$item->product->name} ({$item->product->size_label}) ".($item->product->stock === 1 ? 'is' : 'are').' left, so we updated your cart.');
             }
+        }
 
-            if ($quantity > $product->stock) {
-                $this->put($productId, $product->stock);
-                $this->notices[] = new CartNotice("Only {$product->stock} ".str('pair')->plural($product->stock)
-                    ." of {$product->name} ({$product->size_label}) ".($product->stock === 1 ? 'is' : 'are').' left, so we updated your cart.');
-            }
+        $releases = CartRelease::query()->where('user_id', $user->id)->whereNull('notified_at')->with('product')->orderBy('id')->get();
+        foreach ($releases as $release) {
+            $this->notices[] = $this->noticeFor($release, $user);
+        }
+        if ($releases->isNotEmpty()) {
+            CartRelease::query()->whereIn('id', $releases->pluck('id'))->update(['notified_at' => now()]);
         }
     }
 
     /**
-     * Explain why an item left the cart: bought by someone else, already in the customer's own
-     * order, or taken off sale (hidden / deleted) by the shop.
+     * The message for a hold that ended, with similar available pairs to look at instead.
      */
-    private function unavailableNotice(?Product $product): CartNotice
+    private function noticeFor(CartRelease $release, User $user): CartNotice
     {
-        if ($product === null) {
-            return new CartNotice('An item in your cart is no longer for sale and was removed.');
+        $product = $release->product;
+
+        // Sold, but to this same customer (e.g. in another tab): it's in their own order.
+        if ($product && $release->reason === CartRelease::BOUGHT_BY_OTHER) {
+            $ownOrder = $user->orders()
+                ->whereIn('status', [OrderStatus::Pending, OrderStatus::Paid, OrderStatus::Shipped, OrderStatus::Delivered])
+                ->whereHas('items', fn ($query) => $query->where('product_id', $product->id))
+                ->latest('id')
+                ->first();
+
+            if ($ownOrder) {
+                return new CartNotice(
+                    "{$release->product_name} is already in your order {$ownOrder->order_number}"
+                        .($ownOrder->isAwaitingOnlinePayment() ? ', waiting for payment' : '').', so we removed it from your cart.',
+                    route('account.orders.show', $ownOrder->order_number),
+                    'View order',
+                );
+            }
         }
 
-        $item = "{$product->name} ({$product->size_label})";
-
-        if ($product->status === ProductStatus::Hidden) {
-            return new CartNotice("{$item} is no longer for sale and was removed from your cart.");
-        }
-
-        // Sold out. If this customer's own open order holds it, they bought it, not "someone else".
-        $ownOrder = $this->user()?->orders()
-            ->whereIn('status', [OrderStatus::Pending, OrderStatus::Paid, OrderStatus::Shipped, OrderStatus::Delivered])
-            ->whereHas('items', fn ($query) => $query->where('product_id', $product->id))
-            ->latest('id')
-            ->first();
-
-        if ($ownOrder) {
-            return new CartNotice(
-                "{$item} is already in your order {$ownOrder->order_number}"
-                    .($ownOrder->isAwaitingOnlinePayment() ? ', waiting for payment' : '')
-                    .', so we removed it from your cart.',
-                route('account.orders.show', $ownOrder->order_number),
-                'View order',
-            );
-        }
-
-        $size = Product::formatSize($product->size);
+        $similar = $product
+            ? app(SimilarProducts::class)->for($product, self::SIMILAR_LINKS)
+                ->map(fn (Product $p) => ['url' => route('shop.show', $p->slug), 'label' => "{$p->name} ({$p->size_label})"])
+                ->all()
+            : [];
 
         return new CartNotice(
-            "Sorry, someone else just bought {$item}, so we removed it from your cart.",
-            route('shop.index', ['size' => $size]),
-            "See other {$product->size_label} shoes",
+            $release->message(),
+            $product ? route('shop.index', ['size' => Product::formatSize($product->size)]) : route('shop.index'),
+            $product ? "See other {$product->size_label} shoes" : 'Browse the shop',
+            $similar,
         );
     }
 
     /**
-     * Cart contents with products loaded, in the order they were added. Call reconcile() first.
+     * Held lines with products loaded, in the order they were added. Call reconcile() first.
      *
      * @return Collection<int, CartLine>
      */
     public function lines(): Collection
     {
-        $raw = $this->raw();
-        $products = Product::with(['primaryImage', 'category'])->whereIn('id', array_keys($raw))->get()->keyBy('id');
-
-        return collect($raw)
-            ->filter(fn (int $quantity, int $productId) => $products->has($productId))
-            ->map(fn (int $quantity, int $productId) => new CartLine($products->get($productId), $quantity))
+        return $this->items()
+            ->filter(fn (CartItem $item) => $item->reserved_until?->isFuture())
+            ->load(['product.primaryImage', 'product.category'])
+            ->filter(fn (CartItem $item) => $item->product !== null)
+            ->map(fn (CartItem $item) => new CartLine($item->product, $item->quantity, $item->reserved_until))
             ->values();
     }
 
@@ -239,35 +224,8 @@ class ShoppingCart
         return $notices;
     }
 
-    /**
-     * Move the session (guest) cart into the user's saved cart. A product in both keeps the
-     * larger quantity (never doubled), capped at current stock; unavailable items are dropped.
-     */
-    public function mergeGuestCartInto(User $user): void
+    private function requireUser(): User
     {
-        $guestItems = session()->pull(self::SESSION_KEY, []);
-
-        if ($guestItems === []) {
-            return;
-        }
-
-        $cart = $user->cart()->firstOrCreate();
-        $saved = $cart->items()->pluck('quantity', 'product_id');
-        $products = Product::whereIn('id', array_keys($guestItems))->get()->keyBy('id');
-
-        foreach ($guestItems as $productId => $quantity) {
-            $product = $products->get($productId);
-
-            if (! $product?->isAvailable()) {
-                continue;
-            }
-
-            $cart->items()->updateOrCreate(
-                ['product_id' => $productId],
-                ['quantity' => min(max($quantity, $saved->get($productId, 0)), $product->stock)],
-            );
-        }
-
-        $user->setRelation('cart', $cart);
+        return $this->user() ?? throw new \LogicException('Adding to the cart requires a logged-in customer.');
     }
 }

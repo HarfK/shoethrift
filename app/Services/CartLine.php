@@ -3,12 +3,14 @@
 namespace App\Services;
 
 use App\Models\Product;
+use Illuminate\Support\Carbon;
 
 final readonly class CartLine
 {
     public function __construct(
         public Product $product,
         public int $quantity,
+        public ?Carbon $reservedUntil = null,
     ) {}
 
     /**

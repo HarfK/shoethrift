@@ -5,7 +5,10 @@ namespace App\Providers;
 use App\Models\Category;
 use App\Models\Review;
 use App\Services\ShoppingCart;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -42,6 +45,11 @@ class AppServiceProvider extends ServiceProvider
                 return $this->copy()->setTimezone(config('app.display_timezone'))->format($format);
             });
         }
+
+        // Add-to-cart rate limit per customer (abuse: grabbing and releasing pairs repeatedly).
+        RateLimiter::for('cart-add', fn (Request $request) => Limit::perMinute((int) config('shop.cart.adds_per_minute'))
+            ->by('cart-add:'.($request->user()?->id ?? $request->ip()))
+            ->response(fn () => back()->with('error', "You're adding to your cart too quickly. Please wait a minute and try again.")));
 
         // The shop footer lists every category; the header shows the cart count. Checking the cart
         // here means a customer hears about sold-out items on whatever shop page they open next.

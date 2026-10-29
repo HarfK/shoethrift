@@ -7,6 +7,7 @@
         ['label' => 'Categories', 'href' => route('admin.categories.index'), 'active' => request()->routeIs('admin.categories.*')],
         ['label' => 'Orders', 'href' => route('admin.orders.index'), 'active' => request()->routeIs('admin.orders.*')],
         ['label' => 'Reports', 'href' => route('admin.reports.index'), 'active' => request()->routeIs('admin.reports.*')],
+        ['label' => 'Reservations', 'href' => route('admin.reservations.index'), 'active' => request()->routeIs('admin.reservations.*')],
         ['label' => 'Returns', 'href' => route('admin.returns.index'), 'active' => request()->routeIs('admin.returns.*'),
             'count' => \App\Models\ReturnRequest::whereIn('status', [\App\Enums\ReturnStatus::Requested, \App\Enums\ReturnStatus::Approved])->count()],
         ['label' => 'Reviews', 'href' => route('admin.reviews.index'), 'active' => request()->routeIs('admin.reviews.*'),

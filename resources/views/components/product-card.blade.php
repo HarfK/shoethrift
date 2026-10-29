@@ -3,11 +3,17 @@
 
 <a href="{{ route('shop.show', $product->slug) }}"
    {{ $attributes->class('group flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600') }}>
-    @if ($url = $product->primaryImage?->url)
-        <img src="{{ $url }}" alt="{{ $product->name }}" class="aspect-square w-full object-cover" loading="lazy">
-    @else
-        <x-shoe-placeholder class="aspect-square w-full" />
-    @endif
+    <div class="relative">
+        @if ($url = $product->primaryImage?->url)
+            <img src="{{ $url }}" alt="{{ $product->name }}" class="aspect-square w-full object-cover" loading="lazy">
+        @else
+            <x-shoe-placeholder class="aspect-square w-full" />
+        @endif
+        {{-- held_by_others comes from Product::withHeldByOthers() --}}
+        @if ($product->getAttribute('held_by_others') !== null && $product->isReservedByOthers())
+            <span class="absolute left-2 top-2 rounded-full bg-amber-500 px-2 py-0.5 text-xs font-semibold text-white shadow" data-reserved>Reserved</span>
+        @endif
+    </div>
 
     <div class="flex flex-1 flex-col p-3 sm:p-4">
         <p class="text-xs font-medium uppercase tracking-wide text-stone-500">{{ $product->brand }}</p>

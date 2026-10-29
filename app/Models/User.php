@@ -125,6 +125,16 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Cart holds that ended without an order (see App\Services\Cart\Reservations).
+     *
+     * @return HasMany<CartRelease, $this>
+     */
+    public function cartReleases(): HasMany
+    {
+        return $this->hasMany(CartRelease::class);
+    }
+
+    /**
      * @return HasMany<Address, $this>
      */
     public function addresses(): HasMany
@@ -185,6 +195,23 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return (int) ($this->getAttribute('failed_cod_count')
             ?? $this->orders()->failedCodDelivery()->count());
+    }
+
+    /**
+     * Cart holds that ran out on this customer in the admin window (config shop.cart.expired_window_days).
+     */
+    public function expiredHoldCount(): int
+    {
+        return CartRelease::query()
+            ->where('user_id', $this->id)
+            ->where('reason', CartRelease::EXPIRED)
+            ->where('released_at', '>=', now()->subDays((int) config('shop.cart.expired_window_days')))
+            ->count();
+    }
+
+    public function hasRepeatedExpiredHolds(): bool
+    {
+        return $this->expiredHoldCount() >= (int) config('shop.cart.flag_expired_after');
     }
 
     /**

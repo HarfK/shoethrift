@@ -30,6 +30,14 @@
                                             <p class="text-xs font-medium uppercase tracking-wide text-stone-500">{{ $product->brand }}</p>
                                             <a href="{{ route('shop.show', $product->slug) }}" class="font-semibold hover:underline">{{ $product->name }}</a>
                                             <p class="mt-0.5 text-sm text-stone-600">{{ $product->size_label }} · {{ $product->condition->label() }}</p>
+                                            @if ($line->reservedUntil)
+                                                {{-- Server time first; the script below turns it into a live countdown. --}}
+                                                <p class="mt-1 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900"
+                                                   data-hold-countdown data-expires-at="{{ $line->reservedUntil->toIso8601String() }}">
+                                                    <svg viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                                                    <span data-countdown-text>Reserved for you until {{ $line->reservedUntil->shopTime() }}</span>
+                                                </p>
+                                            @endif
                                         </div>
                                         <p class="font-semibold tabular-nums">RM {{ number_format($line->total(), 2) }}</p>
                                     </div>
@@ -87,24 +95,41 @@
                     </dl>
 
                     <div class="mt-5">
-                        @auth
-                            <a href="{{ route('checkout.create') }}" class="block w-full rounded-md bg-stone-900 px-4 py-3 text-center font-semibold text-white hover:bg-stone-700">
-                                Proceed to checkout
-                            </a>
-                        @else
-                            <a href="{{ route('login', ['return' => route('checkout.create', absolute: false)]) }}"
-                               class="block w-full rounded-md bg-stone-900 px-4 py-3 text-center font-semibold text-white hover:bg-stone-700">
-                                Log in to check out
-                            </a>
-                            <p class="mt-2 text-center text-xs text-stone-600">
-                                New here? <a href="{{ route('register') }}" class="font-medium text-emerald-700 hover:underline">Create an account</a>. Your cart comes with you.
-                            </p>
-                        @endauth
+                        <a href="{{ route('checkout.create') }}" class="block w-full rounded-md bg-stone-900 px-4 py-3 text-center font-semibold text-white hover:bg-stone-700">
+                            Proceed to checkout
+                        </a>
                     </div>
 
-                    <p class="mt-4 text-xs text-stone-500">Items in your cart aren't reserved. Each pair goes to whoever checks out first.</p>
+                    <p class="mt-4 text-xs text-stone-500">
+                        Pairs in your cart are reserved for you for {{ \App\Services\Cart\Reservations::holdMinutes() }} minutes from when you added them,
+                        and the time isn't extended. Your cart holds up to {{ $maxItems }} pairs.
+                    </p>
                 </aside>
             </div>
         @endif
     </div>
+
+    {{-- Live countdown for each hold. Without JS the "Reserved until" time above still shows. --}}
+    <script>
+        (() => {
+            const badges = document.querySelectorAll('[data-hold-countdown]');
+            if (!badges.length) return;
+            const tick = () => {
+                let expired = false;
+                badges.forEach((badge) => {
+                    const left = Math.max(0, Math.floor((new Date(badge.dataset.expiresAt) - Date.now()) / 1000));
+                    const text = badge.querySelector('[data-countdown-text]');
+                    if (left === 0) {
+                        text.textContent = 'Reservation expired';
+                        expired = true;
+                    } else {
+                        text.textContent = 'Reserved for ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') + ' more';
+                    }
+                });
+                if (expired) setTimeout(() => location.reload(), 1500); // the server then explains what happened
+                else setTimeout(tick, 1000);
+            };
+            tick();
+        })();
+    </script>
 </x-layouts.shop>

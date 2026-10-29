@@ -8,6 +8,8 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\Review;
+use App\Services\Cart\ProductWatchers;
+use App\Services\Cart\Reservations;
 use App\Services\Recommendations\SimilarProducts;
 use App\Services\Reviews\ReviewStats;
 use App\Services\ShoppingCart;
@@ -34,6 +36,7 @@ class ShopController extends Controller
         $products = $this->applyFilters(Product::available(), $filters)
             ->with(['primaryImage', 'category'])
             ->withRatingSummary()
+            ->withHeldByOthers($request->user()?->id)
             ->tap(fn (Builder $query) => match ($filters['sort']) {
                 'price_asc' => $query->orderBy('price')->orderByDesc('id'),
                 'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
@@ -75,6 +78,11 @@ class ShopController extends Controller
         return view('shop.show', [
             'product' => $product,
             'inCart' => $cart->quantityOf($product),
+            // Timed holds: mine, and pairs held in other customers' carts (with when one may free up).
+            'heldUntil' => $cart->heldUntil($product),
+            'heldByOthers' => Reservations::heldByOthers($product->id, $request->user()?->id),
+            'nextFreeAt' => Reservations::nextFreeAt($product->id, $request->user()?->id),
+            'watching' => $request->user() ? ProductWatchers::isWatching($request->user()->id, $product->id) : false,
             'reviews' => $product->reviews()->visible()->with(['user:id,name', 'visibleMedia'])->latest()->latest('id')
                 ->paginate(self::REVIEWS_PER_PAGE, pageName: 'reviews_page')->withQueryString()->fragment('reviews'),
             // stars => count of visible reviews, rows 5 down to 1 (4 = 4.0 to 4.5)

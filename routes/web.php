@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\ReservationController;
 use App\Http\Controllers\Admin\ReturnRequestController as AdminReturnRequestController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Auth\EmailVerificationController;
@@ -42,11 +43,15 @@ Route::view('/privacy', 'pages.privacy')->name('pages.privacy');
 Route::get('/customer-service', [ContactController::class, 'create'])->name('pages.customer-service');
 Route::post('/customer-service', [ContactController::class, 'store'])->middleware('throttle:5,1')->name('pages.customer-service.store');
 
-// Guests can use the cart; login is only required at checkout.
-Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
-Route::post('/cart/items', [CartController::class, 'store'])->name('cart.items.store');
-Route::patch('/cart/items/{productId}', [CartController::class, 'update'])->whereNumber('productId')->name('cart.items.update');
-Route::delete('/cart/items/{productId}', [CartController::class, 'destroy'])->whereNumber('productId')->name('cart.items.destroy');
+// The cart needs login: adding reserves the pair (timed hold, see App\Services\Cart\Reservations).
+// Guests browse freely and are sent to login and back.
+Route::middleware('auth')->group(function () {
+    Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
+    Route::post('/cart/items', [CartController::class, 'store'])->middleware('throttle:cart-add')->name('cart.items.store');
+    Route::patch('/cart/items/{productId}', [CartController::class, 'update'])->whereNumber('productId')->name('cart.items.update');
+    Route::delete('/cart/items/{productId}', [CartController::class, 'destroy'])->whereNumber('productId')->name('cart.items.destroy');
+    Route::post('/shop/{slug}/notify', [CartController::class, 'watch'])->name('shop.watch');
+});
 
 Route::middleware('auth')->group(function () {
     // Buying needs a verified email (Laravel's built-in flow; see EmailVerificationController).
@@ -132,6 +137,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('messages', [ContactMessageController::class, 'index'])->name('messages.index');
     Route::get('messages/{message}', [ContactMessageController::class, 'show'])->name('messages.show');
     Route::patch('messages/{message}/resolve', [ContactMessageController::class, 'resolve'])->name('messages.resolve');
+
+    Route::get('reservations', ReservationController::class)->name('reservations.index');
 
     Route::get('reviews', [AdminReviewController::class, 'index'])->name('reviews.index');
     Route::patch('reviews/{review}/visibility', [AdminReviewController::class, 'toggle'])->name('reviews.toggle');

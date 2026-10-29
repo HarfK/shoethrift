@@ -92,7 +92,18 @@
                            class="inline-block rounded-md border border-stone-300 bg-white px-5 py-3 text-sm font-semibold hover:bg-stone-50">
                             Browse other {{ $product->size_label }} shoes
                         </a>
-                    @elseif ($inCart >= $product->stock)
+                    @elseif (! auth()->check())
+                        {{-- Adding reserves the pair, so it needs an account. Back here after logging in. --}}
+                        @if ($heldByOthers >= $product->stock)
+                            <p class="mb-3 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-900" data-reserved-by-other>
+                                <strong>Reserved by another shopper.</strong>
+                                @if ($nextFreeAt) It may be available again around {{ $nextFreeAt->shopTime() }} (in about {{ max(1, (int) ceil(now()->diffInMinutes($nextFreeAt))) }} min). @endif
+                            </p>
+                        @endif
+                        <a href="{{ route('login', ['return' => route('shop.show', $product->slug, absolute: false)]) }}"
+                           class="inline-block rounded-md bg-stone-900 px-8 py-3 font-semibold text-white hover:bg-stone-700">Log in to reserve this pair</a>
+                        <p class="mt-2 text-sm text-stone-600">Adding to your cart holds the pair for you for {{ \App\Services\Cart\Reservations::holdMinutes() }} minutes.</p>
+                    @elseif ($inCart > 0 && $inCart >= $product->stock - $heldByOthers)
                         <div class="flex flex-wrap items-center gap-3">
                             <span class="inline-flex items-center gap-2 rounded-md bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
                                 <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
@@ -100,8 +111,30 @@
                             </span>
                             <a href="{{ route('cart.index') }}" class="rounded-md bg-stone-900 px-6 py-3 font-semibold text-white hover:bg-stone-700">View cart</a>
                         </div>
+                        @if ($heldUntil)
+                            <p class="mt-2 text-sm text-stone-600" data-held-by-me>Reserved for you until <strong>{{ $heldUntil->shopTime() }}</strong>. Check out before then to keep it.</p>
+                        @endif
+                    @elseif ($product->stock - $heldByOthers - $inCart <= 0)
+                        <div class="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" data-reserved-by-other>
+                            <p class="font-semibold">Reserved by another shopper</p>
+                            <p class="mt-1">
+                                Someone has this pair in their cart.
+                                @if ($nextFreeAt)
+                                    If they don't check out, it may be available again around <strong>{{ $nextFreeAt->shopTime() }}</strong> (in about {{ max(1, (int) ceil(now()->diffInMinutes($nextFreeAt))) }} min).
+                                @endif
+                            </p>
+                            <form method="POST" action="{{ route('shop.watch', $product->slug) }}" class="mt-3">
+                                @csrf
+                                <button type="submit" class="rounded-md border border-amber-400 bg-white px-4 py-2 font-semibold text-amber-900 hover:bg-amber-100">
+                                    {{ $watching ? "Don't notify me" : "Notify me when it's free" }}
+                                </button>
+                            </form>
+                            @if ($watching)
+                                <p class="mt-2 text-xs">We'll email you once, as soon as it's free again.</p>
+                            @endif
+                        </div>
                     @else
-                        @php($canAdd = $product->stock - $inCart)
+                        @php($canAdd = $product->stock - $heldByOthers - $inCart)
                         <form method="POST" action="{{ route('cart.items.store') }}" class="flex flex-wrap items-end gap-3">
                             @csrf
                             <input type="hidden" name="product_id" value="{{ $product->id }}">
@@ -119,6 +152,7 @@
                                 Add to cart
                             </button>
                         </form>
+                        <p class="mt-2 text-sm text-stone-600">Adding it reserves the pair for you for {{ \App\Services\Cart\Reservations::holdMinutes() }} minutes.</p>
                         @if ($inCart > 0)
                             <p class="mt-2 text-sm text-stone-600">{{ $inCart }} already in <a href="{{ route('cart.index') }}" class="font-medium text-emerald-700 hover:underline">your cart</a>.</p>
                         @endif

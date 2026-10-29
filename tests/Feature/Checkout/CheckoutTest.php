@@ -67,14 +67,13 @@ class CheckoutTest extends TestCase
 
     // --- Access & page ----------------------------------------------------
 
-    public function test_guests_must_log_in_and_come_back_to_checkout_with_their_cart(): void
+    public function test_guests_must_log_in_to_check_out(): void
     {
-        $this->addToCart($this->dunk);
-
         $this->get(route('checkout.create'))->assertRedirect(route('login'));
         $this->post('/login', ['email' => $this->customer->email, 'password' => 'password'])
             ->assertRedirect(route('checkout.create'));
 
+        $this->addToCart($this->dunk);
         $this->get(route('checkout.create'))->assertOk()->assertSee('Nike Dunk Low');
     }
 
@@ -253,31 +252,25 @@ class CheckoutTest extends TestCase
     {
         $daniel = User::factory()->create();
 
-        // Both put the same pair in their carts, and Daniel opens checkout.
+        // Aisyah reserves it; Daniel can't even put it in his cart while she holds it.
         $this->actingAs($this->customer);
         $this->addToCart($this->dunk);
         $this->actingAs($daniel);
-        $this->addToCart($this->dunk);
-        $danielsShownTotal = $this->expectedTotal();
+        $this->post(route('cart.items.store'), ['product_id' => $this->dunk->id])
+            ->assertSessionHas('error', fn (string $message) => str_starts_with($message, 'Reserved by another shopper.'));
 
-        // Aisyah buys it first.
+        // Daniel's checkout has nothing to buy.
+        $this->get(route('checkout.create'))->assertRedirect(route('cart.index'));
+
+        // Aisyah buys it.
         $this->actingAs($this->customer);
         $this->placeOrder()->assertRedirect();
-
-        // Daniel then submits the checkout page he already had open.
-        $this->actingAs($daniel);
-        $this->placeOrder(['recipient_name' => 'Daniel', 'expected_total' => $danielsShownTotal])
-            ->assertRedirect(route('cart.index'))
-            ->assertSessionHas('error', "Your order wasn't placed because your cart changed. Nothing was charged. Please review your cart and check out again.");
-
-        $this->get(route('cart.index'))
-            ->assertSee('Sorry, someone else just bought Nike Dunk Low (UK 8.5), so we removed it from your cart.')
-            ->assertSee('See other UK 8.5 shoes');
 
         $this->assertSame(1, Order::count());
         $this->assertSame($this->customer->id, Order::sole()->user_id);
         $this->assertSame(0, $this->dunk->fresh()->stock, 'Stock never goes below zero.');
-        $this->assertSame(0, app(ShoppingCart::class)->count(), "The sold pair is removed from Daniel's cart.");
+        $this->actingAs($daniel);
+        $this->assertSame(0, app(ShoppingCart::class)->count(), 'Daniel never held it.');
     }
 
     public function test_checkout_is_all_or_nothing(): void

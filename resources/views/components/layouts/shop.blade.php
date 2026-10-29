@@ -129,6 +129,14 @@
                         @if ($notice->linkUrl)
                             <a href="{{ $notice->linkUrl }}" class="font-semibold underline">{{ $notice->linkLabel }}</a>
                         @endif
+                        @if ($notice->similar)
+                            <span class="w-full text-xs" data-similar-links>
+                                Similar pairs available now:
+                                @foreach ($notice->similar as $similar)
+                                    <a href="{{ $similar['url'] }}" class="font-medium underline">{{ $similar['label'] }}</a>@if (! $loop->last) · @endif
+                                @endforeach
+                            </span>
+                        @endif
                     </div>
                 @endforeach
             </div>

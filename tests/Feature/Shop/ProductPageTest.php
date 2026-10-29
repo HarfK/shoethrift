@@ -73,21 +73,23 @@ class ProductPageTest extends TestCase
     {
         $form = 'action="'.route('cart.items.store').'"';
 
+        // Guests are asked to log in (adding reserves the pair).
         $this->get(route('shop.show', 'nike-air-jordan-1'))
-            ->assertSee($form, false)
-            ->assertSee('Add to cart')
-            ->assertDontSee('id="quantity"', false); // stock 1: no quantity picker
+            ->assertDontSee($form, false)
+            ->assertSee('Log in to reserve this pair');
 
         $this->actingAs(User::factory()->create())
             ->get(route('shop.show', 'nike-air-jordan-1'))
-            ->assertSee($form, false);
+            ->assertSee($form, false)
+            ->assertSee(['Add to cart', 'reserves the pair for you for 15 minutes'])
+            ->assertDontSee('id="quantity"', false); // stock 1: no quantity picker
     }
 
     public function test_quantity_picker_appears_when_several_pairs_are_in_stock(): void
     {
         $this->product->update(['stock' => 3]);
 
-        $this->get(route('shop.show', 'nike-air-jordan-1'))
+        $this->actingAs(User::factory()->create())->get(route('shop.show', 'nike-air-jordan-1'))
             ->assertSee('id="quantity"', false)
             ->assertSee('<option value="3">3</option>', false)
             ->assertSee('In stock — 3 pairs left');
