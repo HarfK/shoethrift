@@ -186,14 +186,17 @@
             </div>
         </div>
 
-        {{-- Rule-based recommendations (App\Services\Recommendations\SimilarProducts). --}}
+        {{-- Rule-based recommendations (App\Services\Recommendations\Recommender). --}}
         @if ($recommendations->isNotEmpty())
             <section class="mt-12 border-t border-stone-200 pt-8" aria-labelledby="recommendations-heading" data-recommendations>
                 <h2 id="recommendations-heading" class="text-xl font-bold tracking-tight">{{ $available ? 'You may also like' : 'This pair is sold. You may also like' }}</h2>
-                <p class="mt-1 text-sm text-stone-600">Picked by size, category, brand, price and condition.</p>
+                <p class="mt-1 text-sm text-stone-600">
+                    Picked by size, category, brand, price and condition.
+                    @if ($recommendations->first()->personal_score !== null) Also based on your shoe preferences and the pairs you've looked at. @endif
+                </p>
                 <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                     @foreach ($recommendations as $recommended)
-                        <x-product-card :product="$recommended" :reasons="$recommended->recommendation_reasons" />
+                        <x-product-card :product="$recommended" :reasons="$recommended->recommendation_reasons" src="recommendation" />
                     @endforeach
                 </div>
             </section>

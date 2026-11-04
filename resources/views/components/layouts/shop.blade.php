@@ -61,6 +61,20 @@
                 </a>
 
                 @auth
+                    {{-- Customer notification bell (App\Notifications\CustomerAlert) --}}
+                    @php
+                        $unreadNotifications = auth()->user()->customerNotifications()->whereNull('read_at')->count();
+                    @endphp
+                    <a href="{{ route('account.notifications.index') }}" data-customer-bell
+                       class="relative flex size-9 items-center justify-center rounded-md hover:bg-stone-100"
+                       aria-label="Notifications, {{ $unreadNotifications }} unread"
+                       @if (request()->routeIs('account.notifications.*')) aria-current="page" @endif>
+                        <svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                        @if ($unreadNotifications > 0)
+                            <span class="absolute -right-0.5 -top-0.5 flex min-w-4.5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold leading-4.5 text-white tabular-nums" aria-hidden="true" data-unread-count>{{ $unreadNotifications > 99 ? '99+' : $unreadNotifications }}</span>
+                        @endif
+                    </a>
+
                     <details class="relative">
                         <summary class="flex cursor-pointer list-none items-center gap-1 rounded-md px-2 py-1.5 text-sm hover:bg-stone-100">
                             <x-avatar :user="auth()->user()" class="size-7 text-xs" />

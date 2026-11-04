@@ -6,6 +6,8 @@ use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\ReturnStatus;
 use App\Services\AdminNotifier;
+use App\Services\CustomerNotifier;
+use App\Services\Recommendations\Interactions;
 use Database\Factories\OrderFactory;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
@@ -60,6 +62,27 @@ class Order extends Model
      *
      * @return array<string, string>
      */
+    /**
+     * Recommendations: an online order counts as a purchase once it becomes Paid.
+     * (Cash on Delivery orders are logged when created, see OrderItem.)
+     * Customer notifications: "placed" for a new Cash on Delivery order, "paid" for an online one.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (Order $order) {
+            if ($order->payment_method === PaymentMethod::CashOnDelivery) {
+                CustomerNotifier::orderPlaced($order);
+            }
+        });
+
+        static::updated(function (Order $order) {
+            if ($order->wasChanged('status') && $order->status === OrderStatus::Paid) {
+                Interactions::purchaseOrder($order);
+                CustomerNotifier::orderPaid($order);
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [

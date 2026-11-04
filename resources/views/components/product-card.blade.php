@@ -1,7 +1,8 @@
-{{-- $reasons: optional "why recommended" labels (SimilarProducts), shown as a line under the name. --}}
-@props(['product', 'reasons' => []])
+{{-- $reasons: optional "why recommended" labels, shown as a line under the name.
+     $src: optional click source for recommendation blocks (?src=recommendation), see Interactions::SOURCES. --}}
+@props(['product', 'reasons' => [], 'src' => null])
 
-<a href="{{ route('shop.show', $product->slug) }}"
+<a href="{{ route('shop.show', array_filter(['slug' => $product->slug, 'src' => $src])) }}"
    {{ $attributes->class('group flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600') }}>
     <div class="relative">
         @if ($url = $product->primaryImage?->url)

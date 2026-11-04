@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Services\Cart\ProductWatchers;
 use App\Services\Cart\ReservationException;
 use App\Services\Cart\Reservations;
+use App\Services\Recommendations\Interactions;
 use App\Services\ShoppingCart;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -43,6 +44,7 @@ class CartController extends Controller
         }
 
         $product = $line->product;
+        Interactions::cart($request->user(), $product);
 
         return back()
             ->with('success', "Added {$product->name} ({$product->size_label}) to your cart. It's reserved for you until {$line->reserved_until->shopTime()}.")

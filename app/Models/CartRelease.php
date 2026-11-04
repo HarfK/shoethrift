@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\CustomerNotifier;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -32,6 +33,19 @@ class CartRelease extends Model
     /**
      * @return array<string, string>
      */
+    /**
+     * Customer notification "your hold has expired". A release is recorded exactly once per hold
+     * (see Reservations::releaseExpired), so this is sent once too.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (CartRelease $release) {
+            if ($release->reason === self::EXPIRED) {
+                CustomerNotifier::holdExpired($release);
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [

@@ -41,6 +41,26 @@
         </ul>
     </section>
 
+    {{-- For you: logged-in customers only (Recommender::forYou, personal score only). --}}
+    @if ($forYou !== null)
+        <section class="mx-auto max-w-7xl px-4 pt-12 sm:px-6" aria-labelledby="for-you-heading" data-for-you>
+            <h2 id="for-you-heading" class="text-2xl font-bold tracking-tight">For you</h2>
+            @if ($forYou->isEmpty())
+                <p class="mt-4 rounded-xl border border-dashed border-stone-300 p-6 text-center text-stone-600">
+                    <a href="{{ route('account.profile') }}#preferences-heading" class="font-medium text-emerald-700 hover:underline">Set your shoe size, brands and budget</a>
+                    to see pairs picked for you.
+                </p>
+            @else
+                <p class="mt-1 text-sm text-stone-600">Based on your shoe preferences and the pairs you've looked at.</p>
+                <div class="mt-6 grid grid-cols-2 gap-3 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
+                    @foreach ($forYou as $product)
+                        <x-product-card :product="$product" :reasons="$product->recommendation_reasons" src="for_you" />
+                    @endforeach
+                </div>
+            @endif
+        </section>
+    @endif
+
     {{-- Newly added --}}
     <section class="mx-auto max-w-7xl px-4 pt-12 sm:px-6">
         <div class="flex items-end justify-between gap-4">

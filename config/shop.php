@@ -31,6 +31,8 @@ return [
         'max_items' => (int) env('SHOP_CART_MAX_ITEMS', 3),
         'adds_per_minute' => (int) env('SHOP_CART_ADDS_PER_MINUTE', 10),
         'flag_expired_after' => 3,
+        // Customer notification "your hold expires soon", sent this many minutes before the end.
+        'warn_minutes_before' => 3,
         'expired_window_days' => 30,
     ],
 

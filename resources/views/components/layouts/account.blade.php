@@ -7,6 +7,7 @@
         ['label' => 'Profile', 'href' => route('account.profile'), 'active' => request()->routeIs('account.profile')],
         ['label' => 'Addresses', 'href' => route('account.addresses.index'), 'active' => request()->routeIs('account.addresses.*')],
         ['label' => 'My orders', 'href' => route('account.orders.index'), 'active' => request()->routeIs('account.orders.*', 'account.returns.*')],
+        ['label' => 'Notifications', 'href' => route('account.notifications.index'), 'active' => request()->routeIs('account.notifications.*')],
     ];
 @endphp
 

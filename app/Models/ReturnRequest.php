@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\RefundMethod;
 use App\Enums\ReturnReason;
 use App\Enums\ReturnStatus;
+use App\Services\CustomerNotifier;
 use Database\Factories\ReturnRequestFactory;
 use DomainException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -120,6 +121,8 @@ class ReturnRequest extends Model
                 'admin_note' => $note === null || trim($note) === '' ? null : trim($note),
                 'decided_at' => now(),
             ])->save();
+
+            CustomerNotifier::returnDecided($this); // sent after commit
         });
     }
 }

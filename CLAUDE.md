@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **ShoeThrift** is a final-year project: a web-based thrift store for second-hand **shoes** (not clothing) in Malaysia, with a rule-based personalised recommendation engine (see "Recommendations" below). Prices are in RM, and FPX payment is planned. Recommendations must be deterministic rules: show available products with the **same UK size / same category / same brand** as the viewed product. No machine learning. Keep the code consistent with the proposal's modules (auth, profile, admin products, browse/search, recommendations, cart, checkout, order tracking, admin reports) and flag any divergence.
 
-A thrift store system built on Laravel 12 (PHP ^8.2). So far the app has the database layer, hand-written session auth, an admin area for products, categories and orders (`/admin/...`), and the public shop: home (`/`), shop listing (`/shop`) and product page (`/shop/{slug}`). It also has a login-only cart (`/cart`) where each pair is held for 15 minutes, checkout (`/checkout`, orders are placed as Pending), "My orders" (`/account/orders`), content pages with a Customer Service contact form, return/refund requests, an admin dashboard, sales reports (`/admin/reports`, PDF/CSV), an admin notification bell, a customer account area (profile with avatar, email verification, demo phone OTP, address book), product reviews by verified buyers, rule-based "You may also like" recommendations, and thrift-specific product details. Customer-side cancel and the home page "Recommended for you" (based on a customer's saved size/brand/budget preferences) don't exist yet. The frontend tooling is Vite 7 + Tailwind CSS 4 via `laravel-vite-plugin` (`resources/css/app.css`, `resources/js/app.js`).
+A thrift store system built on Laravel 12 (PHP ^8.2). So far the app has the database layer, hand-written session auth, an admin area for products, categories and orders (`/admin/...`), and the public shop: home (`/`), shop listing (`/shop`) and product page (`/shop/{slug}`). It also has a login-only cart (`/cart`) where each pair is held for 15 minutes, checkout (`/checkout`, orders are placed as Pending), "My orders" (`/account/orders`), content pages with a Customer Service contact form, return/refund requests, an admin dashboard, sales reports (`/admin/reports`, PDF/CSV), an admin notification bell, a customer account area (profile with avatar, email verification, demo phone OTP, address book), product reviews by verified buyers, rule-based "You may also like" recommendations, and thrift-specific product details. It also has personal recommendations (saved shoe preferences, a home page "For you" block). Customer-side cancel doesn't exist yet. The frontend tooling is Vite 7 + Tailwind CSS 4 via `laravel-vite-plugin` (`resources/css/app.css`, `resources/js/app.js`).
 
 ## Commands
 
@@ -229,6 +229,20 @@ The tables are users → orders → order_items ← products → product_images,
   - Order: score descending, then closest price (`abs(price - ?)`), then newest, then id, so the result is **deterministic** and testable.
 - **"Why" labels:** each result carries `recommendation_score` and `recommendation_reasons` ("Same size · Same brand"), which `<x-product-card :reasons>` shows.
 - No machine learning, by design; keep it that way. Change weights only in `WEIGHTS` and update `RecommendationTest`.
+- `SimilarProducts::for()` is still used as-is for the cart's "similar pairs" links. The product page goes through `Recommender` (below).
+
+### Personal recommendations
+
+- **Data:** `user_preferences` (one row per user: `shoe_size`, `preferred_brands` json, `min_price`, `max_price`), saved from the "Shoe preferences" card on the profile (`Account\PreferenceController`, error bag `preferences`; brands must be ones the shop has, at most 5). `user_interactions` (`view` / `cart` / `purchase`, optional `source`).
+- **Logging:** only through `App\Services\Recommendations\Interactions`, never for guests, written after commit.
+  - view: `ShopController::show`; a repeat view of the same product (same source) within 30 minutes isn't logged again;
+  - cart: `CartController@store` after a successful add;
+  - purchase: model events, not payment code. `OrderItem` created on a COD order, or `Order` status changing to Paid (online).
+  - `?src=` on product links is stored as `source` only for `Interactions::SOURCES` (`recommendation`, `for_you`). `<x-product-card src="…">` adds it.
+- **`PersonalScore` (0-100):** size 40 (saved size, else the most frequent interacted size; ties: higher weight, then smaller size), brand 20 (saved preferred brand = 20, else 20 x weight / highest), category 20 (20 x weight / highest), budget 20 (inside the saved budget, else within 30% of the average interacted price). Weights: view 1, cart 3, purchase 5. No data = 0 for that part. Only the user's own rows.
+- **`Recommender::forProduct()`** ("You may also like"): similarity = `SimilarProducts` score / 9 x 100. With personal data, final = 0.6 x similarity + 0.4 x personal; guests and users without data get similarity only. Minimum 40, top 4, for everyone. Ties: smaller price difference, newest, id. Leaves out unavailable/sold, the viewed pair and pairs in the user's cart (active holds).
+- **`Recommender::forYou()`** (home "For you", logged in only): personal score only, above 0, top 4, same exclusions. Without data it shows a link to set preferences.
+- Tests: `PersonalRecommendationTest`. Change weights only in the class constants and update the tests.
 
 ## Thrift product details
 

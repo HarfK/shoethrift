@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use App\Enums\UserRole;
+use App\Notifications\CustomerAlert;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
@@ -132,6 +134,32 @@ class User extends Authenticatable implements MustVerifyEmail
     public function cartReleases(): HasMany
     {
         return $this->hasMany(CartRelease::class);
+    }
+
+    /**
+     * This customer's bell notifications (App\Notifications\CustomerAlert), newest first.
+     */
+    public function customerNotifications(): MorphMany
+    {
+        return $this->notifications()->where('type', CustomerAlert::class);
+    }
+
+    /**
+     * Saved shoe size, brands and budget (for personal recommendations).
+     *
+     * @return HasOne<UserPreference, $this>
+     */
+    public function preference(): HasOne
+    {
+        return $this->hasOne(UserPreference::class);
+    }
+
+    /**
+     * @return HasMany<UserInteraction, $this>
+     */
+    public function interactions(): HasMany
+    {
+        return $this->hasMany(UserInteraction::class);
     }
 
     /**

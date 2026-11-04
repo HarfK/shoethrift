@@ -7,6 +7,7 @@ use App\Enums\PaymentMethod;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateOrderStatusRequest;
 use App\Models\Order;
+use App\Services\CustomerNotifier;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -61,6 +62,11 @@ class OrderController extends Controller
             $order->transitionTo($status);
         } catch (DomainException $e) {
             return back()->with('error', $e->getMessage());
+        }
+
+        // Paid already sends "has been paid" (Order model event).
+        if ($status !== OrderStatus::Paid) {
+            CustomerNotifier::orderStatusChanged($order);
         }
 
         $message = match (true) {

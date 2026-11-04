@@ -20,6 +20,9 @@ use Illuminate\Support\Facades\DB;
  *
  * Products scoring 0 are left out. Order: score (high first), then closest price, newest, id,
  * so the same page always gets the same list.
+ *
+ * The product page uses Recommender, which scales this score to 0-100 (score / maxScore() * 100)
+ * and may mix in PersonalScore. for() is still used for the cart's "similar pairs" links.
  */
 class SimilarProducts
 {
@@ -67,6 +70,33 @@ class SimilarProducts
             ->limit($limit)
             ->get()
             ->each(fn (Product $candidate) => $candidate->setAttribute('recommendation_reasons', $this->reasons($product, $candidate)));
+    }
+
+    /**
+     * The most points a product can get (all rules match): 9.
+     */
+    public static function maxScore(): int
+    {
+        return array_sum(self::WEIGHTS);
+    }
+
+    /**
+     * Every available product except this one (and $excludeIds), with `recommendation_score`
+     * (0 to maxScore()). Only the columns needed for scoring are loaded; no limit.
+     *
+     * @param  list<int>  $excludeIds
+     * @return Collection<int, Product>
+     */
+    public function scored(Product $product, array $excludeIds = []): Collection
+    {
+        [$scoreSql, $bindings] = $this->scoreExpression($product);
+
+        return Product::available()
+            ->whereKeyNot($product->id)
+            ->whereNotIn('products.id', $excludeIds)
+            ->select(['products.id', 'products.size', 'products.brand', 'products.category_id', 'products.price', 'products.created_at'])
+            ->selectRaw("({$scoreSql}) as recommendation_score", $bindings)
+            ->get();
     }
 
     /**

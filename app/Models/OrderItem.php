@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\PaymentMethod;
+use App\Services\Recommendations\Interactions;
 use Database\Factories\OrderItemFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -29,6 +31,19 @@ class OrderItem extends Model
      *
      * @return array<string, string>
      */
+    /**
+     * Recommendations: a Cash on Delivery order counts as a purchase when it is placed.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (OrderItem $item) {
+            $order = $item->order;
+            if ($order?->payment_method === PaymentMethod::CashOnDelivery) {
+                Interactions::purchase($order->user_id, $item->product_id);
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [

@@ -28,6 +28,8 @@ class ProfileController extends Controller
     {
         return view('account.profile', [
             'user' => $request->user(),
+            'preference' => $request->user()->preference,
+            'brandOptions' => PreferenceController::brandOptions(),
             'resendIn' => $phoneVerification->secondsUntilResend($request->user()),
         ]);
     }

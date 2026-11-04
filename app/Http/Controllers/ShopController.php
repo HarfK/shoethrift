@@ -10,7 +10,8 @@ use App\Models\Product;
 use App\Models\Review;
 use App\Services\Cart\ProductWatchers;
 use App\Services\Cart\Reservations;
-use App\Services\Recommendations\SimilarProducts;
+use App\Services\Recommendations\Interactions;
+use App\Services\Recommendations\Recommender;
 use App\Services\Reviews\ReviewStats;
 use App\Services\ShoppingCart;
 use Illuminate\Database\Eloquent\Builder;
@@ -66,7 +67,7 @@ class ShopController extends Controller
         ]);
     }
 
-    public function show(Request $request, string $slug, ShoppingCart $cart, SimilarProducts $similarProducts): View
+    public function show(Request $request, string $slug, ShoppingCart $cart, Recommender $recommender): View
     {
         // Sold products stay reachable so shared links keep working; hidden ones 404.
         $product = Product::visible()
@@ -74,6 +75,9 @@ class ShopController extends Controller
             ->with(['category', 'images' => fn ($query) => $query->orderByDesc('is_primary')->orderBy('id')])
             ->withRatingSummary()
             ->firstOrFail();
+
+        // Logged-in customers only; ?src=recommendation marks a click from a recommendation block.
+        Interactions::view($request->user(), $product, is_string($request->query('src')) ? $request->query('src') : null);
 
         return view('shop.show', [
             'product' => $product,
@@ -88,7 +92,7 @@ class ShopController extends Controller
             // stars => count of visible reviews, rows 5 down to 1 (4 = 4.0 to 4.5)
             'ratingBreakdown' => collect(Review::breakdown($product->reviews()->visible())),
             'reviewableItem' => $this->reviewableItemFor($request, $product),
-            'recommendations' => $similarProducts->for($product),
+            'recommendations' => $recommender->forProduct($product, $request->user()),
             // Only for pairs without reviews of their own (most are one-of-a-kind).
             'storeStats' => $product->reviews_count ? null : ReviewStats::store(),
             'relatedReviews' => $product->reviews_count ? null : ReviewStats::relatedFor($product),

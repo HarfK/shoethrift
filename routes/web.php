@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\Account\AddressController;
+use App\Http\Controllers\Account\NotificationController as AccountNotificationController;
 use App\Http\Controllers\Account\PhoneVerificationController;
+use App\Http\Controllers\Account\PreferenceController;
 use App\Http\Controllers\Account\ProfileController;
 use App\Http\Controllers\AccountOrderController;
 use App\Http\Controllers\Admin\CategoryController;
@@ -71,6 +73,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/account/profile', [ProfileController::class, 'edit'])->name('account.profile');
     Route::patch('/account/profile', [ProfileController::class, 'update'])->name('account.profile.update');
     Route::put('/account/password', [ProfileController::class, 'updatePassword'])->name('account.password.update');
+    Route::patch('/account/preferences', [PreferenceController::class, 'update'])->name('account.preferences.update');
     Route::post('/account/phone/code', [PhoneVerificationController::class, 'send'])->name('account.phone.send');
     Route::post('/account/phone/verify', [PhoneVerificationController::class, 'verify'])->name('account.phone.verify');
 
@@ -83,6 +86,9 @@ Route::middleware('auth')->group(function () {
     Route::patch('/account/addresses/{address}/default', [AddressController::class, 'makeDefault'])->whereNumber('address')->name('account.addresses.default');
 
     Route::get('/account/orders', [AccountOrderController::class, 'index'])->name('account.orders.index');
+    Route::get('/account/notifications', [AccountNotificationController::class, 'index'])->name('account.notifications.index');
+    Route::post('/account/notifications/read-all', [AccountNotificationController::class, 'readAll'])->name('account.notifications.read-all');
+    Route::post('/account/notifications/{id}/open', [AccountNotificationController::class, 'open'])->name('account.notifications.open');
     Route::get('/account/orders/{orderNumber}', [AccountOrderController::class, 'show'])->name('account.orders.show');
     Route::post('/account/orders/{orderNumber}/pay', [AccountOrderController::class, 'pay'])->name('account.orders.pay');
     Route::post('/account/orders/{orderNumber}/check', [AccountOrderController::class, 'check'])->name('account.orders.check');

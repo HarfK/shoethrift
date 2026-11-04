@@ -16,6 +16,9 @@ use Tests\TestCase;
  * The rule-based "You may also like" (SimilarProducts). The viewed pair is a Like-new Nike
  * sneaker, UK 8, RM 300. Each candidate starts with nothing in common with it (UK 12, Boots,
  * Vans, RM 1000, Fair = two condition steps away) and changes only what a test is about.
+ *
+ * The product page shows these through Recommender (scaled to 0-100, at least 40, top 4); see
+ * PersonalRecommendationTest. These tests check the rules themselves via SimilarProducts::for().
  */
 class RecommendationTest extends TestCase
 {
@@ -180,7 +183,7 @@ class RecommendationTest extends TestCase
     public function test_sold_pairs_still_get_recommendations(): void
     {
         $this->viewed->update(['status' => ProductStatus::Sold, 'stock' => 0]);
-        $this->candidate(['name' => 'Another UK 8', 'size' => 8]);
+        $this->candidate(['name' => 'Another UK 8', 'size' => 8, 'category_id' => $this->sneakers->id]);
 
         $this->get(route('shop.show', 'nike-dunk-low'))
             ->assertSee(['This pair is sold. You may also like', 'Another UK 8']);

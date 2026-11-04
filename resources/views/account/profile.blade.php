@@ -116,6 +116,69 @@
         </form>
     </section>
 
+    {{-- Shoe preferences (personal recommendations) --}}
+    @php($prefErrors = $errors->preferences)
+    @php($savedBrands = old('preferred_brands', $preference?->preferred_brands ?? []))
+    @php($savedSize = old('shoe_size', $preference?->shoe_size !== null ? (float) $preference->shoe_size : ''))
+    <section class="mt-6 rounded-xl border border-stone-200 bg-white p-5" aria-labelledby="preferences-heading">
+        <h2 id="preferences-heading" class="text-lg font-semibold">Shoe preferences</h2>
+        <p class="mt-1 text-sm text-stone-600">Used to pick pairs for you. Every field is optional.</p>
+        <form method="POST" action="{{ route('account.preferences.update') }}" class="mt-4 max-w-xl" data-preferences-form>
+            @csrf
+            @method('PATCH')
+
+            <div class="mb-4">
+                <label for="shoe_size" class="mb-1 block text-sm font-medium text-stone-700">UK shoe size</label>
+                <select id="shoe_size" name="shoe_size" class="block w-40 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm">
+                    <option value="">Not set</option>
+                    @foreach (range(1, 15, 0.5) as $size)
+                        <option value="{{ $size }}" @selected($savedSize !== '' && (float) $savedSize === (float) $size)>UK {{ \App\Models\Product::formatSize($size) }}</option>
+                    @endforeach
+                </select>
+                @if ($prefErrors->has('shoe_size'))
+                    <p class="mt-1 text-sm text-red-600">{{ $prefErrors->first('shoe_size') }}</p>
+                @endif
+            </div>
+
+            <fieldset class="mb-4">
+                <legend class="mb-1 text-sm font-medium text-stone-700">Brands you like (up to {{ \App\Http\Controllers\Account\PreferenceController::MAX_BRANDS }})</legend>
+                <div class="flex flex-wrap gap-x-4 gap-y-2">
+                    @forelse ($brandOptions as $brand)
+                        <label class="inline-flex items-center gap-2 text-sm">
+                            <input type="checkbox" name="preferred_brands[]" value="{{ $brand }}" @checked(in_array($brand, (array) $savedBrands, true)) class="rounded border-stone-300">
+                            {{ $brand }}
+                        </label>
+                    @empty
+                        <p class="text-sm text-stone-500">No brands in the shop yet.</p>
+                    @endforelse
+                </div>
+                @foreach (['preferred_brands', 'preferred_brands.*'] as $key)
+                    @if ($prefErrors->has($key))
+                        <p class="mt-1 text-sm text-red-600">{{ $prefErrors->first($key) }}</p>
+                    @endif
+                @endforeach
+            </fieldset>
+
+            <fieldset class="mb-4">
+                <legend class="mb-1 text-sm font-medium text-stone-700">Budget (RM)</legend>
+                <div class="flex flex-wrap items-center gap-2">
+                    <label for="min_price" class="sr-only">Minimum price</label>
+                    <input id="min_price" name="min_price" type="number" min="0" step="0.01" placeholder="Min" value="{{ old('min_price', $preference?->min_price) }}" class="w-32 rounded-md border border-stone-300 px-3 py-2 text-sm">
+                    <span class="text-stone-500">to</span>
+                    <label for="max_price" class="sr-only">Maximum price</label>
+                    <input id="max_price" name="max_price" type="number" min="0" step="0.01" placeholder="Max" value="{{ old('max_price', $preference?->max_price) }}" class="w-32 rounded-md border border-stone-300 px-3 py-2 text-sm">
+                </div>
+                @foreach (['min_price', 'max_price'] as $key)
+                    @if ($prefErrors->has($key))
+                        <p class="mt-1 text-sm text-red-600">{{ $prefErrors->first($key) }}</p>
+                    @endif
+                @endforeach
+            </fieldset>
+
+            <button type="submit" class="rounded-md bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-stone-700">Save preferences</button>
+        </form>
+    </section>
+
     {{-- Password --}}
     <section class="mt-6 rounded-xl border border-stone-200 bg-white p-5" aria-labelledby="password-heading">
         <h2 id="password-heading" class="text-lg font-semibold">Change password</h2>
