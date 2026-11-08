@@ -1,0 +1,105 @@
+{
+  "model_name": "XGBoost",
+  "model_class": "forecasting.models.XGBoostModel",
+  "target": "daily net revenue (RM): paid orders (status paid/shipped/completed/refunded), dated by paid_at in Malaysia time (UTC+8), total - refunded_amount",
+  "trained_from": "2024-11-01",
+  "trained_until": "2026-11-07",
+  "training_days": 737,
+  "interval": "80% prediction interval (lower, upper)",
+  "features": [
+    "day_of_week",
+    "day_of_month",
+    "month",
+    "payday",
+    "double_day",
+    "double_day_adjacent",
+    "black_friday",
+    "pre_raya",
+    "raya_closure",
+    "chinese_new_year",
+    "deepavali",
+    "back_to_school",
+    "month_end",
+    "december",
+    "lag_7",
+    "lag_14",
+    "lag_28",
+    "rolling_mean_7 (shifted 7)",
+    "rolling_mean_28 (shifted 7)"
+  ],
+  "evaluation": {
+    "method": "rolling-origin backtest: last 91 days, refit every 7 days, forecast 7 days ahead",
+    "test_from": "2026-08-09",
+    "test_until": "2026-11-07",
+    "metrics": {
+      "MAE (RM)": 587.44,
+      "RMSE (RM)": 739.55,
+      "WAPE (%)": 57.83,
+      "weekly total error (%)": 27.02,
+      "weekly total bias (%)": -3.64,
+      "80% interval coverage (%)": 64.84
+    },
+    "all_models": [
+      {
+        "model": "XGBoost",
+        "MAE (RM)": 587.44,
+        "RMSE (RM)": 739.55,
+        "WAPE (%)": 57.83,
+        "weekly total error (%)": 27.02,
+        "weekly total bias (%)": -3.64,
+        "80% interval coverage (%)": 64.84
+      },
+      {
+        "model": "SARIMA",
+        "MAE (RM)": 642.99,
+        "RMSE (RM)": 762.7,
+        "WAPE (%)": 63.3,
+        "weekly total error (%)": 36.37,
+        "weekly total bias (%)": 24.35,
+        "80% interval coverage (%)": 63.74
+      },
+      {
+        "model": "Prophet",
+        "MAE (RM)": 647.0,
+        "RMSE (RM)": 773.9,
+        "WAPE (%)": 63.7,
+        "weekly total error (%)": 40.85,
+        "weekly total bias (%)": 26.09,
+        "80% interval coverage (%)": 58.24
+      },
+      {
+        "model": "Seasonal naive",
+        "MAE (RM)": 874.73,
+        "RMSE (RM)": 1077.78,
+        "WAPE (%)": 86.11,
+        "weekly total error (%)": 35.19,
+        "weekly total bias (%)": 11.32,
+        "80% interval coverage (%)": 63.74
+      }
+    ]
+  },
+  "sarima_order": {
+    "order": [
+      0,
+      0,
+      0
+    ],
+    "seasonal_order": [
+      0,
+      0,
+      0,
+      7
+    ]
+  },
+  "created_at": "2026-11-08T07:06:35+00:00",
+  "versions": {
+    "pandas": "3.1.1",
+    "numpy": "2.5.4",
+    "scikit-learn": "1.9.1",
+    "xgboost": "3.4.1",
+    "statsmodels": "0.15.0",
+    "prophet": "1.5.0",
+    "joblib": "1.6.0"
+  },
+  "load": "sys.path.insert(0, 'ml-service'); model = joblib.load('ml-service/models/revenue_model_v1.joblib'); model.predict(dates)"
+}

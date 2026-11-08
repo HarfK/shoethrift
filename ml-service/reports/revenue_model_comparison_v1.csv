@@ -1,0 +1,5 @@
+model,MAE (RM),RMSE (RM),WAPE (%),weekly total error (%),weekly total bias (%),80% interval coverage (%)
+XGBoost,587.44,739.55,57.83,27.02,-3.64,64.84
+SARIMA,642.99,762.7,63.3,36.37,24.35,63.74
+Prophet,647.0,773.9,63.7,40.85,26.09,58.24
+Seasonal naive,874.73,1077.78,86.11,35.19,11.32,63.74

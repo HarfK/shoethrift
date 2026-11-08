@@ -50,6 +50,8 @@ class Order extends Model
         'delivery_failed_at',
         'delivered_at',
         'refunded_amount',
+        'points_redeemed',
+        'points_discount',
     ];
 
     /**
@@ -95,6 +97,8 @@ class Order extends Model
             'delivery_failed_at' => 'datetime',
             'delivered_at' => 'datetime',
             'refunded_amount' => 'decimal:2',
+            'points_redeemed' => 'integer',
+            'points_discount' => 'decimal:2',
         ];
     }
 
@@ -281,13 +285,24 @@ class Order extends Model
     }
 
     /**
-     * Items total before shipping.
+     * Items total before shipping and before the loyalty points discount
+     * (total = subtotal + shipping_fee - points_discount).
      *
      * @return Attribute<string, never>
      */
     protected function subtotal(): Attribute
     {
-        return Attribute::get(fn () => number_format((float) $this->total - (float) $this->shipping_fee, 2, '.', ''));
+        return Attribute::get(fn () => number_format((float) $this->total - (float) $this->shipping_fee + (float) $this->points_discount, 2, '.', ''));
+    }
+
+    /**
+     * Loyalty points rows for this order (earned, used, returned, taken back).
+     *
+     * @return HasMany<PointTransaction, $this>
+     */
+    public function pointTransactions(): HasMany
+    {
+        return $this->hasMany(PointTransaction::class);
     }
 
     /**

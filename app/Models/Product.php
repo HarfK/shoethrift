@@ -35,6 +35,7 @@ class Product extends Model
         'brand',
         'description',
         'price',
+        'retail_price',
         'condition',
         'size',
         'color',

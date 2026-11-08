@@ -4,7 +4,16 @@
         'sold' => 'bg-stone-100 text-stone-700 ring-stone-500/20',
         'hidden' => 'bg-amber-50 text-amber-800 ring-amber-600/20',
     ];
-    $hasFilters = $filters['search'] !== '' || $filters['category'] || $filters['brand'] !== '' || $filters['status'];
+    // Sortable headers: first click ascending, then toggles; the page resets, filters stay.
+    $sortUrl = fn (string $column) => route('admin.products.index', array_merge(request()->except(['page', 'sort', 'direction']), [
+        'sort' => $column, 'direction' => $sort === $column && $direction === 'asc' ? 'desc' : 'asc',
+    ]));
+    $columns = [
+        'name' => ['Name', ''], 'category' => ['Category', ''], 'brand' => ['Brand', ''], 'price' => ['Price', 'justify-end'],
+        'condition' => ['Condition', ''], 'stock' => ['Stock', 'justify-end'], 'status' => ['Status', ''], 'created_at' => ['Date added', ''],
+    ];
+    $hasFilters = $filters['search'] !== '' || $filters['category'] || $filters['brand'] !== '' || $filters['status']
+        || $filters['size_min'] !== null || $filters['size_max'] !== null;
 @endphp
 
 <x-layouts.admin title="Products">
@@ -51,6 +60,19 @@
                 @endforeach
             </select>
         </div>
+        @if ($sort !== \App\Http\Controllers\Admin\ProductController::DEFAULT_SORT || $direction !== \App\Http\Controllers\Admin\ProductController::DEFAULT_DIRECTION)
+            {{-- Keep the current sort when filtering. --}}
+            <input type="hidden" name="sort" value="{{ $sort }}">
+            <input type="hidden" name="direction" value="{{ $direction }}">
+        @endif
+        @if ($filters['size_min'] !== null || $filters['size_max'] !== null)
+            {{-- Size range (set from the Restock page); kept when filtering, removed by Reset. --}}
+            <input type="hidden" name="size_min" value="{{ $filters['size_min'] }}">
+            <input type="hidden" name="size_max" value="{{ $filters['size_max'] }}">
+            <span class="inline-flex items-center rounded-full bg-violet-50 px-3 py-2 text-sm font-medium text-violet-800 ring-1 ring-inset ring-violet-600/20" data-size-filter>
+                UK {{ $filters['size_min'] !== null ? rtrim(rtrim(number_format($filters['size_min'], 1), '0'), '.') : '…' }}–{{ $filters['size_max'] !== null ? rtrim(rtrim(number_format($filters['size_max'], 1), '0'), '.') : '…' }}
+            </span>
+        @endif
         <div class="flex gap-2">
             <button type="submit" class="rounded-md bg-stone-800 px-4 py-2 text-sm font-medium text-white hover:bg-stone-900">Filter</button>
             @if ($hasFilters)
@@ -64,13 +86,26 @@
             <thead class="bg-stone-50 text-left text-xs font-medium uppercase tracking-wide text-stone-500">
                 <tr>
                     <th scope="col" class="px-4 py-3"><span class="sr-only">Image</span></th>
-                    <th scope="col" class="px-4 py-3">Name</th>
-                    <th scope="col" class="px-4 py-3">Category</th>
-                    <th scope="col" class="px-4 py-3">Brand</th>
-                    <th scope="col" class="px-4 py-3 text-right">Price</th>
-                    <th scope="col" class="px-4 py-3">Condition</th>
-                    <th scope="col" class="px-4 py-3 text-right">Stock</th>
-                    <th scope="col" class="px-4 py-3">Status</th>
+                    @foreach ($columns as $column => [$label, $align])
+                        <th scope="col" class="px-4 py-3" aria-sort="{{ $sort === $column ? ($direction === 'asc' ? 'ascending' : 'descending') : 'none' }}">
+                            <a href="{{ $sortUrl($column) }}" data-sort="{{ $column }}"
+                               class="group inline-flex w-full items-center gap-1 whitespace-nowrap uppercase hover:text-stone-900 {{ $align }} {{ $sort === $column ? 'text-stone-900' : '' }}">
+                                {{ $label }}
+                                @if ($sort === $column)
+                                    <svg viewBox="0 0 20 20" class="size-3.5" fill="currentColor" aria-hidden="true" data-sort-active="{{ $direction }}">
+                                        @if ($direction === 'asc')
+                                            <path d="M10 5l5 7H5z"/>
+                                        @else
+                                            <path d="M10 15l-5-7h10z"/>
+                                        @endif
+                                    </svg>
+                                    <span class="sr-only">(sorted {{ $direction === 'asc' ? 'ascending' : 'descending' }})</span>
+                                @else
+                                    <svg viewBox="0 0 20 20" class="size-3.5 text-stone-300 group-hover:text-stone-400" fill="currentColor" aria-hidden="true"><path d="M10 3l4 5H6zM10 17l-4-5h8z"/></svg>
+                                @endif
+                            </a>
+                        </th>
+                    @endforeach
                     <th scope="col" class="px-4 py-3"><span class="sr-only">Actions</span></th>
                 </tr>
             </thead>
@@ -98,6 +133,7 @@
                                 {{ $product->status->label() }}
                             </span>
                         </td>
+                        <td class="whitespace-nowrap px-4 py-3 text-stone-600">{{ $product->created_at->shopDate() }}</td>
                         <td class="whitespace-nowrap px-4 py-3 text-right">
                             <a href="{{ route('admin.products.edit', $product) }}" class="font-medium text-emerald-700 hover:underline">Edit</a>
                             <form method="POST" action="{{ route('admin.products.destroy', $product) }}" class="ml-3 inline"
@@ -110,7 +146,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="9" class="px-4 py-12 text-center text-stone-500">
+                        <td colspan="10" class="px-4 py-12 text-center text-stone-500">
                             {{ $hasFilters ? 'No products match your filters.' : 'No products yet.' }}
                         </td>
                     </tr>

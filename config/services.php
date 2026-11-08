@@ -44,6 +44,18 @@ return [
         'payment_window_minutes' => (int) env('HITPAY_PAYMENT_WINDOW_MINUTES', 30),
     ],
 
+    /*
+    | ML service (ml-service/, FastAPI on 127.0.0.1): revenue forecast, restock report, price suggestions.
+    | The key must match ML_API_KEY in ml-service/.env. Never commit it. See App\Services\Ml\MlService.
+    */
+    'ml' => [
+        'url' => env('ML_API_URL', 'http://127.0.0.1:8001'),
+        'key' => env('ML_API_KEY'),
+        'timeout' => (int) env('ML_API_TIMEOUT', 5),
+        'connect_timeout' => (int) env('ML_API_CONNECT_TIMEOUT', 2),
+        'retrain_timeout' => (int) env('ML_API_RETRAIN_TIMEOUT', 30),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

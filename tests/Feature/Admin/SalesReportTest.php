@@ -120,7 +120,7 @@ class SalesReportTest extends TestCase
         $this->assertSame('0.00', $summary(['period' => 'month', 'month' => '2026-09'])['net']);
 
         $this->actingAs($this->admin)->get(route('admin.reports.index', ['period' => 'week', 'date' => '2026-10-27']))
-            ->assertSee('Week of 26 Oct to 1 Nov 2026');
+            ->assertSee('26 Oct – 1 Nov 2026');
     }
 
     public function test_long_ranges_are_grouped_by_month(): void

@@ -9,6 +9,8 @@ use App\Http\Requests\Admin\StoreProductRequest;
 use App\Http\Requests\Admin\UpdateProductRequest;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\ProductImage;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,33 +26,99 @@ class ProductController extends Controller
 {
     private const PER_PAGE = 15;
 
+    /** Sortable columns (?sort=...&direction=asc|desc); anything else falls back to the default. */
+    public const SORTS = ['name', 'category', 'brand', 'price', 'condition', 'stock', 'status', 'created_at'];
+
+    public const DEFAULT_SORT = 'created_at';
+
+    public const DEFAULT_DIRECTION = 'desc';
+
+    /** Logical (not alphabetical) orders for the enum columns. */
+    private const CONDITION_ORDER = ['like_new', 'good', 'fair'];
+
+    private const STATUS_ORDER = ['available', 'hidden', 'sold'];
+
     public function index(Request $request): View
     {
         $search = $request->string('search')->trim()->toString();
         $categoryId = $request->integer('category') ?: null;
         $brand = $request->string('brand')->trim()->toString();
         $status = ProductStatus::tryFrom($request->string('status')->toString());
+        // UK size range, e.g. from the Restock page (size band S/M/L). Non-numbers are ignored.
+        $sizeMin = is_numeric($request->query('size_min')) ? (float) $request->query('size_min') : null;
+        $sizeMax = is_numeric($request->query('size_max')) ? (float) $request->query('size_max') : null;
 
-        $products = Product::query()
+        [$sort, $direction] = $this->sorting($request);
+
+        // Columns are qualified with "products." because sorting by category joins the categories table.
+        $query = Product::query()
+            ->select('products.*')
             ->with(['category', 'primaryImage'])
             ->when($search !== '', fn ($query) => $query->where(fn ($query) => $query
-                ->where('name', 'like', '%'.$search.'%')
-                ->orWhere('brand', 'like', '%'.$search.'%')))
-            ->when($categoryId, fn ($query) => $query->where('category_id', $categoryId))
-            ->when($brand !== '', fn ($query) => $query->where('brand', $brand))
-            ->when($status, fn ($query) => $query->where('status', $status))
-            ->latest()
-            ->latest('id')
-            ->paginate(self::PER_PAGE)
-            ->withQueryString();
+                ->where('products.name', 'like', '%'.$search.'%')
+                ->orWhere('products.brand', 'like', '%'.$search.'%')))
+            ->when($categoryId, fn ($query) => $query->where('products.category_id', $categoryId))
+            ->when($brand !== '', fn ($query) => $query->where('products.brand', $brand))
+            ->when($status, fn ($query) => $query->where('products.status', $status))
+            ->when($sizeMin !== null, fn ($query) => $query->where('products.size', '>=', $sizeMin))
+            ->when($sizeMax !== null, fn ($query) => $query->where('products.size', '<=', $sizeMax));
+
+        $this->applySort($query, $sort, $direction);
+
+        $products = $query->paginate(self::PER_PAGE)->withQueryString();
 
         return view('admin.products.index', [
             'products' => $products,
             'categories' => Category::orderBy('name')->get(['id', 'name']),
             'brands' => $this->brands(),
             'statuses' => ProductStatus::cases(),
-            'filters' => ['search' => $search, 'category' => $categoryId, 'brand' => $brand, 'status' => $status?->value],
+            'filters' => ['search' => $search, 'category' => $categoryId, 'brand' => $brand, 'status' => $status?->value,
+                'size_min' => $sizeMin, 'size_max' => $sizeMax],
+            'sort' => $sort,
+            'direction' => $direction,
         ]);
+    }
+
+    /**
+     * The requested sort, whitelisted: an unknown column means the default (newest first);
+     * a known column with a missing or unknown direction sorts ascending.
+     *
+     * @return array{0: string, 1: 'asc'|'desc'}
+     */
+    private function sorting(Request $request): array
+    {
+        $sort = $request->query('sort');
+        if (! is_string($sort) || ! in_array($sort, self::SORTS, true)) {
+            return [self::DEFAULT_SORT, self::DEFAULT_DIRECTION];
+        }
+        $direction = $request->query('direction');
+
+        return [$sort, in_array($direction, ['asc', 'desc'], true) ? $direction : 'asc'];
+    }
+
+    /**
+     * Category sorts by category name, condition by Like new > Good > Fair, status by Available > Hidden > Sold.
+     * Ties are broken by id (same direction) so pagination is stable.
+     *
+     * @param  Builder<Product>  $query
+     */
+    private function applySort(Builder $query, string $sort, string $direction): void
+    {
+        $grammar = DB::getQueryGrammar();
+        $rank = function (string $column, array $order) use ($grammar, $direction): string {
+            $cases = implode(' ', array_map(fn ($value, $i) => "when '{$value}' then {$i}", $order, array_keys($order)));
+
+            return "case {$grammar->wrap($column)} {$cases} else ".count($order)." end {$direction}";
+        };
+
+        match ($sort) {
+            'category' => $query->leftJoin('categories as sort_categories', 'sort_categories.id', '=', 'products.category_id')
+                ->orderBy('sort_categories.name', $direction),
+            'condition' => $query->orderByRaw($rank('products.condition', self::CONDITION_ORDER)),
+            'status' => $query->orderByRaw($rank('products.status', self::STATUS_ORDER)),
+            default => $query->orderBy('products.'.$sort, $direction),
+        };
+        $query->orderBy('products.id', $direction);
     }
 
     public function create(): View
@@ -120,7 +188,7 @@ class ProductController extends Controller
         }
 
         // Only remove files once the database no longer points at them.
-        Storage::disk('public')->delete($removedImages->pluck('image_path')->all());
+        ProductImage::deleteUnusedFiles($removedImages->pluck('image_path')->all());
 
         return redirect()->route('admin.products.edit', $product)
             ->with('success', "Product \"{$product->name}\" was updated.");
@@ -152,7 +220,7 @@ class ProductController extends Controller
             return back()->with('error', $this->inOrdersMessage($product, $orderCount));
         }
 
-        Storage::disk('public')->delete($paths);
+        ProductImage::deleteUnusedFiles($paths);
         Storage::disk('public')->deleteDirectory("products/{$product->id}");
 
         return back()->with('success', "Product \"{$product->name}\" was deleted.");

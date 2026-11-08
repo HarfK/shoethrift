@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateOrderStatusRequest;
 use App\Models\Order;
 use App\Services\CustomerNotifier;
+use App\Services\Loyalty\PointsService;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -47,10 +48,12 @@ class OrderController extends Controller
         ]);
     }
 
-    public function show(Order $order): View
+    public function show(Order $order, PointsService $points): View
     {
         return view('admin.orders.show', [
             'order' => $order->load(['user', 'items.product.primaryImage', 'returnRequest']),
+            'pointRows' => $order->pointTransactions()->orderBy('id')->get(),
+            'customerPoints' => $points->balance($order->user_id),
         ]);
     }
 

@@ -34,6 +34,9 @@
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <!-- Fake HitPay credentials: tests never use real keys (and real HTTP is blocked in TestCase). -->
         <env name="HITPAY_API_KEY" value="test-api-key"/>
+        <!-- ML service: off unless a test configures it (and fakes it with Http::fake()) -->
+        <env name="ML_API_URL" value=""/>
+        <env name="ML_API_KEY" value=""/>
         <env name="HITPAY_SALT" value="test-webhook-salt"/>
         <env name="HITPAY_API_URL" value="https://api.sandbox.hit-pay.com"/>
         <env name="HITPAY_CURRENCY" value="MYR"/>

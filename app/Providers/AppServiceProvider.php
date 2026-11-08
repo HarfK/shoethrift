@@ -3,7 +3,9 @@
 namespace App\Providers;
 
 use App\Models\Category;
+use App\Models\Order;
 use App\Models\Review;
+use App\Observers\OrderPointsObserver;
 use App\Services\ShoppingCart;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -38,6 +40,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Loyalty points follow order status changes (earn on completed, reverse on refund/cancel/fail).
+        Order::observe(OrderPointsObserver::class);
+
         // $order->created_at->shopDateTime() etc.: converts a copy to display time, never the stored value.
         foreach (self::DATE_FORMATS as $name => $format) {
             Carbon::macro($name, function () use ($format): string {

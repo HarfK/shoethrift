@@ -13,6 +13,8 @@ use App\Services\Checkout\ItemsUnavailableException;
 use App\Services\Checkout\PlaceOrder;
 use App\Services\Checkout\PriceChangedException;
 use App\Services\Checkout\ReservationExpiredException;
+use App\Services\Loyalty\PointsException;
+use App\Services\Loyalty\PointsService;
 use App\Services\Payments\StartHitPayPayment;
 use App\Services\ShoppingCart;
 use Illuminate\Http\RedirectResponse;
@@ -27,7 +29,7 @@ class CheckoutController extends Controller
      */
     public const PHONE_PATTERN = '/^(\+?60[\s-]?|0)1?[0-9][\s-]?[0-9]{3,4}[\s-]?[0-9]{4}$/';
 
-    public function create(Request $request, ShoppingCart $cart, CashOnDeliveryPolicy $codPolicy): View|RedirectResponse
+    public function create(Request $request, ShoppingCart $cart, CashOnDeliveryPolicy $codPolicy, PointsService $points): View|RedirectResponse
     {
         $cart->reconcile();
         $lines = $cart->lines();
@@ -50,6 +52,7 @@ class CheckoutController extends Controller
             'addresses' => $request->user()->addresses()->orderByDesc('is_default')->latest('updated_at')->get(),
             'states' => config('shop.states'),
             'codUnavailableReason' => $codPolicy->unavailableReason($request->user(), $total),
+            'points' => $this->pointsOptions($points, $request->user()->id, $subtotal),
         ]);
     }
 
@@ -67,6 +70,7 @@ class CheckoutController extends Controller
             'save_address' => ['nullable', 'boolean'],
             'payment_method' => ['required', Rule::enum(PaymentMethod::class)],
             'expected_total' => ['required', 'numeric'],
+            'points' => ['nullable', 'integer', 'min:0'],
         ], [
             ...AddressRequest::fieldMessages(),
             'address_id.exists' => 'Choose one of your saved addresses.',
@@ -94,6 +98,7 @@ class CheckoutController extends Controller
                 $address->toShippingSnapshot(),
                 (string) $data['expected_total'],
                 $paymentMethod,
+                (int) ($data['points'] ?? 0),
             );
         } catch (ItemsUnavailableException $e) {
             // Drop what's gone (and clamp quantities) so the customer reviews an accurate cart.
@@ -112,6 +117,8 @@ class CheckoutController extends Controller
             return redirect()->route('cart.index')
                 ->with('error', "Your reservation ran out before the order was placed, so nothing was ordered or charged. Add the pair again if it's still free.")
                 ->with('cart_notices', $cart->pullNotices());
+        } catch (PointsException $e) {
+            return redirect()->route('checkout.create')->withInput()->withErrors(['points' => $e->getMessage()]);
         } catch (CashOnDeliveryNotAllowedException $e) {
             return redirect()->route('checkout.create')->withInput()->withErrors(['payment_method' => $e->getMessage()]);
         } catch (PriceChangedException $e) {
@@ -157,5 +164,23 @@ class CheckoutController extends Controller
             ->where('order_number', $orderNumber)
             ->with('items.product.primaryImage')
             ->firstOrFail();
+    }
+
+    /**
+     * Loyalty points for the checkout page: balance, the choices allowed for this cart, and what it will earn.
+     *
+     * @return array{balance: int, value: string, max: int, options: array<int, string>, earn: int, min: int}
+     */
+    private function pointsOptions(PointsService $points, int $userId, float $subtotal): array
+    {
+        $balance = $points->balance($userId);
+        $max = $points->maxRedeemable($balance, $subtotal);
+        $options = [];
+        for ($p = $points->minPoints(); $p <= $max; $p += $points->blockPoints()) {
+            $options[$p] = $points->discountFor($p);
+        }
+
+        return ['balance' => $balance, 'value' => $points->discountFor($balance), 'max' => $max, 'options' => $options,
+            'earn' => $points->pointsForSubtotal($subtotal), 'min' => $points->minPoints()];
     }
 }

@@ -41,6 +41,8 @@ abstract class ProductRequest extends FormRequest
             'brand' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:5000'],
             'price' => ['required', 'numeric', 'decimal:0,2', 'min:0', 'max:99999999.99'],
+            // Original brand-new retail price; used by the ML price suggestion. Optional.
+            'retail_price' => ['nullable', 'numeric', 'decimal:0,2', 'gt:0', 'max:99999999.99'],
             'condition' => ['required', Rule::enum(ProductCondition::class)],
             'size' => ['required', 'numeric', 'between:1,15', 'multiple_of:0.5'],
             'color' => ['nullable', 'string', 'max:50'],
@@ -63,6 +65,7 @@ abstract class ProductRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'retail_price.gt' => 'The retail price must be more than RM0 (or leave it empty).',
             'size.between' => 'Enter a UK shoe size between 1 and 15.',
             'size.multiple_of' => 'Use whole or half UK sizes, e.g. 8 or 8.5.',
             'material.in' => 'Choose a material from the list.',

@@ -77,6 +77,12 @@
                             <th scope="row" colspan="3" class="px-5 py-1 text-right font-normal text-stone-600">Shipping</th>
                             <td class="whitespace-nowrap px-5 py-1 text-right tabular-nums">RM {{ number_format($order->shipping_fee, 2) }}</td>
                         </tr>
+                        @if ($order->points_redeemed > 0)
+                            <tr>
+                                <th scope="row" colspan="3" class="px-5 py-1 text-right font-normal text-emerald-800">Points discount ({{ number_format($order->points_redeemed) }} points)</th>
+                                <td class="whitespace-nowrap px-5 py-1 text-right tabular-nums text-emerald-800">−RM {{ number_format($order->points_discount, 2) }}</td>
+                            </tr>
+                        @endif
                         <tr>
                             <th scope="row" colspan="3" class="px-5 pt-1 pb-4 text-right font-semibold">Total</th>
                             <td class="whitespace-nowrap px-5 py-4 text-right text-base font-semibold tabular-nums">RM {{ number_format($order->total, 2) }}</td>
@@ -182,6 +188,21 @@
                         </dd>
                     </div>
                 </dl>
+            </section>
+
+            {{-- Loyalty points for this order and the customer's balance (App\Services\Loyalty\PointsService). --}}
+            <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm" data-order-points>
+                <h2 class="mb-3 text-base font-semibold">Loyalty points</h2>
+                <dl class="space-y-1 text-sm">
+                    @foreach ($pointRows as $row)
+                        <div class="flex justify-between gap-3"><dt class="text-stone-600">{{ $row->type->label() }}</dt><dd @class(['tabular-nums font-medium', 'text-emerald-700' => $row->points > 0, 'text-red-700' => $row->points < 0])>{{ $row->points > 0 ? '+' : '' }}{{ number_format($row->points) }}</dd></div>
+                    @endforeach
+                    @if ($pointRows->isEmpty())
+                        <p class="text-stone-500">No points earned or used on this order{{ $order->status === OrderStatus::Completed ? '' : ' yet (points are earned when it is completed)' }}.</p>
+                    @endif
+                    <div class="flex justify-between gap-3 border-t border-stone-100 pt-2"><dt class="text-stone-600">Customer's balance</dt><dd class="tabular-nums font-semibold">{{ number_format($customerPoints) }} points</dd></div>
+                </dl>
+                <a href="{{ route('admin.customers.points', $order->user) }}" class="mt-3 inline-block text-sm font-medium text-emerald-700 hover:underline">Points history &amp; adjust &rarr;</a>
             </section>
 
             <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">

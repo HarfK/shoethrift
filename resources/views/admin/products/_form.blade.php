@@ -39,6 +39,7 @@
             <x-form.select name="condition" label="Condition" placeholder="Choose a condition" required
                            :options="collect($conditions)->mapWithKeys(fn ($c) => [$c->value => $c->label()])" :value="$product->condition?->value" />
             <x-form.field name="price" label="Price (RM)" type="number" step="0.01" min="0" required :value="$product->price" />
+            <x-form.field name="retail_price" label="Retail price (RM)" type="number" step="0.01" min="0" :value="$product->retail_price" placeholder="Original price new (optional)" />
             <x-form.field name="size" label="Size (UK)" type="number" step="0.5" min="1" max="15" required :value="$product->size" placeholder="e.g. 8 or 8.5" />
             <x-form.field name="color" label="Colour" :value="$product->color" maxlength="50" placeholder="e.g. Black/White" />
             <x-form.field name="stock" label="Stock" type="number" step="1" min="0" required :value="$product->stock" />
@@ -79,6 +80,108 @@
                 </div>
             @endforeach
         </fieldset>
+
+        {{-- ML price suggestion (POST admin.products.suggest-price -> ML API). Nothing is saved; the admin decides. --}}
+        <section id="price-suggestion" class="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4"
+                 data-url="{{ route('admin.products.suggest-price') }}" aria-labelledby="price-suggestion-heading">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 id="price-suggestion-heading" class="text-sm font-semibold text-emerald-900">Price suggestion</h2>
+                    <p class="text-xs text-emerald-900/80">Uses the details above (name, brand, category, condition, size, retail price…). Nothing is saved until you save the product.</p>
+                </div>
+                <button type="button" data-suggest-price
+                        class="rounded-md border border-emerald-700 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50">Suggest price</button>
+            </div>
+            <div data-suggest-result class="mt-3 hidden text-sm" aria-live="polite"></div>
+        </section>
+        <script>
+            (() => {
+                const box = document.getElementById('price-suggestion');
+                const form = box.closest('form');
+                const button = box.querySelector('[data-suggest-price]');
+                const out = box.querySelector('[data-suggest-result]');
+                const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+                const rm = (v) => 'RM' + Number(v).toLocaleString('en-MY', { maximumFractionDigits: 0 });
+
+                const show = (nodes) => { out.replaceChildren(...nodes); out.classList.remove('hidden'); };
+                const showErrors = (message, errors) => {
+                    const list = el('ul', 'mt-1 list-disc pl-5');
+                    (errors || []).forEach((e) => list.append(el('li', '', e)));
+                    const wrap = el('div', 'rounded-md border border-red-200 bg-red-50 p-3 text-red-800');
+                    wrap.append(el('p', 'font-medium', message || 'The price could not be suggested.'), list);
+                    show([wrap]);
+                };
+
+                button.addEventListener('click', async () => {
+                    const data = new FormData(form);
+                    const value = (name) => (data.get(name) ?? '').toString().trim();
+                    const payload = {
+                        name: value('name'), brand: value('brand'), category_id: value('category_id'), condition: value('condition'),
+                        size: value('size'), color: value('color') || null, material: value('material') || null,
+                        sole_condition: value('sole_condition') || null, retail_price: value('retail_price') || null,
+                        box_included: form.querySelector('input[type=checkbox][name=box_included]')?.checked ?? false,
+                    };
+                    button.disabled = true;
+                    button.textContent = 'Suggesting…';
+                    try {
+                        const response = await fetch(box.dataset.url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json',
+                                       'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+                            body: JSON.stringify(payload),
+                        });
+                        const body = await response.json().catch(() => ({}));
+                        if (!response.ok) {
+                            // Laravel validation: {errors: {field: [..]}}; ML API: {errors: [..]}
+                            const errors = Array.isArray(body.errors) ? body.errors : Object.values(body.errors || {}).flat();
+                            showErrors(body.message, errors);
+                            return;
+                        }
+                        const head = el('div', 'flex flex-wrap items-baseline gap-x-3 gap-y-1');
+                        head.append(el('span', 'text-2xl font-semibold text-emerald-900', rm(body.suggested_price)),
+                                    el('span', 'text-stone-700', '80% range ' + rm(body.range_80.lower) + ' – ' + rm(body.range_80.upper)));
+                        const use = el('button', 'ml-auto rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-800', 'Use this price');
+                        use.type = 'button';
+                        use.dataset.usePrice = '';
+                        use.addEventListener('click', () => {
+                            const price = form.querySelector('[name=price]');
+                            price.value = body.suggested_price;
+                            price.dispatchEvent(new Event('input', { bubbles: true }));
+                            // The API estimated the retail price (field was empty): keep it, so the product has one for retraining.
+                            const retail = form.querySelector('[name=retail_price]');
+                            if (body.retail_price_estimated && retail && !retail.value.trim()) {
+                                retail.value = Number(body.retail_price_used).toFixed(2);
+                                retail.dispatchEvent(new Event('input', { bubbles: true }));
+                                use.textContent = 'Price and retail price filled in (not saved yet)';
+                            } else {
+                                use.textContent = 'Price filled in (not saved yet)';
+                            }
+                        });
+                        head.append(use);
+
+                        const parts = [head];
+                        (body.warnings || []).forEach((w) => parts.push(el('p', 'mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 font-medium text-amber-900', '⚠ ' + w)));
+                        const list = el('ul', 'mt-2 space-y-0.5 text-stone-700');
+                        (body.reasons || []).forEach((r, i) => list.append(el('li', i === 0 ? 'font-medium' : 'pl-3', r)));
+                        list.append(el('li', 'border-t border-emerald-200 pt-1 font-medium', '= ' + rm(body.model_estimate) + ', rounded to ' + rm(body.suggested_price)));
+                        parts.push(list);
+                        (body.notes || []).forEach((n) => parts.push(el('p', 'mt-2 text-xs text-stone-600', n)));
+                        if (body.retail_price_estimated) {
+                            parts.push(el('p', 'mt-1 text-xs text-stone-600', '"Use this price" also fills Retail price with this estimate (' + rm(body.retail_price_used) + '); change it if you know the real price.'));
+                        }
+                        if (body.hint) {
+                            parts.push(el('p', 'mt-2 rounded-md bg-stone-100 px-3 py-2 text-xs text-stone-700', 'Tip: ' + body.hint));
+                        }
+                        show(parts);
+                    } catch (error) {
+                        showErrors('The price suggestion service could not be reached. You can still set the price yourself.', []);
+                    } finally {
+                        button.disabled = false;
+                        button.textContent = 'Suggest price';
+                    }
+                });
+            })();
+        </script>
     </section>
 
     <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">

@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**ShoeThrift** is a final-year project: a web-based thrift store for second-hand **shoes** (not clothing) in Malaysia, with a rule-based personalised recommendation engine (see "Recommendations" below). Prices are in RM, and FPX payment is planned. Recommendations must be deterministic rules: show available products with the **same UK size / same category / same brand** as the viewed product. No machine learning. Keep the code consistent with the proposal's modules (auth, profile, admin products, browse/search, recommendations, cart, checkout, order tracking, admin reports) and flag any divergence.
+**ShoeThrift** is a final-year project: a web-based thrift store for second-hand **shoes** (not clothing) in Malaysia, with a rule-based personalised recommendation engine (see "Recommendations" below). Prices are in RM, and FPX payment is planned. Recommendations must be deterministic rules: show available products with the **same UK size / same category / same brand** as the viewed product. No machine learning in the recommendations. Separately, the project has an **ML module** (`ml-service/`, Python) for admin features only: revenue forecasting, restock prediction and price recommendation (see "ML module" below). Keep the code consistent with the proposal's modules (auth, profile, admin products, browse/search, recommendations, cart, checkout, order tracking, admin reports) and flag any divergence.
 
-A thrift store system built on Laravel 12 (PHP ^8.2). So far the app has the database layer, hand-written session auth, an admin area for products, categories and orders (`/admin/...`), and the public shop: home (`/`), shop listing (`/shop`) and product page (`/shop/{slug}`). It also has a login-only cart (`/cart`) where each pair is held for 15 minutes, checkout (`/checkout`, orders are placed as Pending), "My orders" (`/account/orders`), content pages with a Customer Service contact form, return/refund requests, an admin dashboard, sales reports (`/admin/reports`, PDF/CSV), an admin notification bell, a customer account area (profile with avatar, email verification, demo phone OTP, address book), product reviews by verified buyers, rule-based "You may also like" recommendations, and thrift-specific product details. It also has personal recommendations (saved shoe preferences, a home page "For you" block). Customer-side cancel doesn't exist yet. The frontend tooling is Vite 7 + Tailwind CSS 4 via `laravel-vite-plugin` (`resources/css/app.css`, `resources/js/app.js`).
+A thrift store system built on Laravel 12 (PHP ^8.2). So far the app has the database layer, hand-written session auth, an admin area for products, categories and orders (`/admin/...`), and the public shop: home (`/`), shop listing (`/shop`) and product page (`/shop/{slug}`). It also has a login-only cart (`/cart`) where each pair is held for 15 minutes, checkout (`/checkout`, orders are placed as Pending), "My orders" (`/account/orders`), content pages with a Customer Service contact form, return/refund requests, an admin dashboard, sales reports (`/admin/reports`, PDF/CSV), an admin notification bell, a customer account area (profile with avatar, email verification, demo phone OTP, address book), product reviews by verified buyers, rule-based "You may also like" recommendations, and thrift-specific product details. It also has personal recommendations (saved shoe preferences, a home page "For you" block). It also has loyalty points (earn on completed orders, redeem at checkout, expiry, admin adjustments). Customer-side cancel doesn't exist yet. The frontend tooling is Vite 7 + Tailwind CSS 4 via `laravel-vite-plugin` (`resources/css/app.css`, `resources/js/app.js`).
 
 ## Commands
 
@@ -23,6 +23,12 @@ php artisan migrate:fresh --seed              # rebuild the schema and seed the 
 vendor/bin/pint                               # format PHP (Laravel Pint); add --test to check only
 npm run build                                 # production asset build
 ```
+
+**Running everything locally (3 services + scheduler):**
+1. **MySQL:** start it in the XAMPP control panel (database `thriftstore`).
+2. **Laravel:** `composer dev` (serve + queue + logs + Vite), or `php artisan serve` with `npm run build`.
+3. **ML API:** `ml-service\run_api.bat` (FastAPI on 127.0.0.1:8001). Without it the admin Insights pages show "offline"; the rest of the site works.
+4. **Scheduler:** `php artisan schedule:work` runs unpaid-order expiry, cart-hold release (every minute) and the weekly `ml:retrain` (Sunday 03:00 Malaysia time). On a server: `php artisan schedule:run` every minute.
 
 ## Database: dev vs. test drivers differ
 
@@ -47,7 +53,7 @@ The tables are users → orders → order_items ← products → product_images,
 
 - Auth is hand-written: no Breeze, Fortify or Jetstream, and no Alpine/React/Vue. Views are Blade + Tailwind 4. The controllers are in `app/Http/Controllers/Auth`, and login validation plus rate limiting (5 attempts per email+IP) is in `app/Http/Requests/Auth/LoginRequest.php`.
 - `LoginController::homeFor($user)` is the single source of truth for where a user lands: `/admin` for admins, `/` (`home`) for customers. It's used after login, and through `redirectUsersTo()` in `bootstrap/app.php` for signed-in users hitting guest-only pages. Logout redirects to `/login`, per the proposal's test plan.
-- Admin routes go in the `auth` + `admin` route group in `routes/web.php`, with names prefixed `admin.`. The `admin` middleware alias (`EnsureUserIsAdmin`, registered in `bootstrap/app.php`) returns 403 for non-admins. Sidebar links are defined at the top of `resources/views/components/layouts/admin.blade.php`.
+- Admin routes go in the `auth` + `admin` route group in `routes/web.php`, with names prefixed `admin.`. The `admin` middleware alias (`EnsureUserIsAdmin`, registered in `bootstrap/app.php`) returns 403 for non-admins. Sidebar links are defined at the top of `resources/views/components/layouts/admin.blade.php`. On md+ the sidebar is `sticky top-0 h-screen`; the menu (`flex-1 min-h-0 overflow-y-auto`) scrolls on its own and the account block (name, View store, Log out) is pinned at the bottom (`mt-auto shrink-0`). On phones it is a top bar, and View store / Log out appear below the page (`AdminLayoutTest`).
 - Pages use anonymous component layouts: `<x-layouts.guest>` (auth card) and `<x-layouts.admin>` (sidebar). Forms use `<x-form.field>` (label + input + error) and `<x-button>`. The `<head>` is shared via `partials/head`.
 - **Mail: use `MAIL_MAILER=log`.** Password-reset and email-verification emails are written to `storage/logs/laravel.log`, with no account needed. `.env.example` has a commented Mailtrap SMTP block (`sandbox.smtp.mailtrap.io:2525`) for viewing emails in a web inbox; never commit real credentials.
 - **Registration** (`RegisterController`) asks for name, email, **phone** and password, but no address (addresses are added later in the address book).
@@ -161,7 +167,13 @@ The tables are users → orders → order_items ← products → product_images,
   - **Dating:** by `paid_at`, in Malaysian days. Weeks start Monday.
   - **Net revenue:** order totals (including shipping) − `refunded_amount`. Refunds count against the order's payment date.
   - **Grouping:** done in PHP, not SQL, so Malaysia-time days work the same on MySQL and SQLite.
-- **`ReportPeriod`:** day, week (Mon–Sun), month, or custom (at most 366 days; longer than 62 days groups by month). Start and end are local times; convert with `->utc()` for queries.
+- **`ReportPeriod`:** day, week (Mon–Sun), month, or custom (at most 366 days counting both ends; longer than 62 days groups by month). Start and end are local times; convert with `->utc()` for queries. Labels: "Fri 6 Nov 2026", "2 Nov – 8 Nov 2026" (`rangeLabel()`; the year shows on both sides across a new year), "November 2026".
+- **Report filter (`/admin/reports`):** one **Flatpickr** picker (npm package, bundled by Vite, no CDN) that changes with the Period select: Daily, Weekly (a click selects the Mon–Sun week, sent as its Monday), Monthly (`monthSelect` plugin), Custom (range, 2 months side by side, end at most 366 days after the start).
+  - `resources/js/report-picker.js` is loaded only when `[data-report-picker]` is on the page (dynamic import, own chunk) with theme overrides in `resources/css/report-picker.css`. **Run `npm run build` after changing them.**
+  - It only writes hidden `date` / `month` / `from` / `to` inputs of a plain GET form, and "Show report" is enabled once the range is complete. "Today" comes from the server (`data-today`, Malaysia time), not the browser clock.
+  - Quick presets (Today, Yesterday, Last 7 days, This month, Last month) are plain links.
+  - **Server:** `ReportController::report()` validates (format, from ≤ to, ≤ 366 days, **no future dates**; the current week/month is allowed "so far") and `queryFor()` gives the canonical query. The picker restores from it, and Print / PDF / CSV links use it, so every output covers the range on screen.
+  - Tests: `SalesReportPeriodTest`.
 - **Dashboard:**
   - **Cards:** today / this week / this month so far, each compared with the same span one period earlier.
   - **Chart:** a 30-day SVG bar chart (`<x-admin.bar-chart>`, server-rendered, no JS library, with a data table).
@@ -244,6 +256,97 @@ The tables are users → orders → order_items ← products → product_images,
 - **`Recommender::forYou()`** (home "For you", logged in only): personal score only, above 0, top 4, same exclusions. Without data it shows a link to set preferences.
 - Tests: `PersonalRecommendationTest`. Change weights only in the class constants and update the tests.
 
+## ML module (`ml-service/`, Python)
+
+- **Scope:** admin-only features: revenue forecasting, restock prediction and price recommendation. It is **not** used by the customer recommendations, which stay rule-based (above). This goes beyond the proposal's module list; say so in the report.
+- **Setup:** Python 3.14 venv at `ml-service/venv`, packages in `ml-service/requirements.txt` (pandas, scikit-learn, xgboost, lightgbm, statsmodels, prophet, shap, FastAPI, …). Prophet 1.5 installs and fits on Windows from its wheel (bundled CmdStan).
+  ```bash
+  py -3.14 -m venv ml-service/venv
+  ml-service/venv/Scripts/python -m pip install -r ml-service/requirements.txt
+  ml-service/venv/Scripts/python ml-service/test_connection.py   # counts + first/last order date
+  ```
+- **Final models** (`ml-service/models/*.joblib` + `.json` metadata), built in notebooks 02–05:
+  - revenue: XGBoost + uplift on major events only (11.11, 12.12, Black Friday, pre-Raya, Raya closure), calibrated 80% intervals (`forecasting/`, notebook 03);
+  - restock: Random forest per model × size band (S/M/L), plus a censored-demand correction for groups with < 2 pairs (`restock/`, notebook 04);
+  - price: Random forest on price ÷ retail, trained on pairs sold within 45 days (before markdowns), with SHAP reasons that add up (`pricing/`, notebook 05).
+- **ML API (FastAPI)**, what Laravel calls:
+  - Start: `ml-service\run_api.bat` (= `uvicorn api.main:app --host 127.0.0.1 --port 8001` from `ml-service/`). It binds to **127.0.0.1 only** and needs MySQL running.
+  - Every request needs the header `X-API-Key: <ML_API_KEY>`. The key is in `ml-service/.env` and the same value in the Laravel `.env` as `ML_API_KEY`, with `ML_API_URL=http://127.0.0.1:8001`. Both files are git-ignored; never commit the key. Missing or wrong key → 401.
+  - Endpoints:
+    - `GET /health`: model names, `trained_until`, key metric, cache ages, retrain status;
+    - `GET /forecast/revenue?days=7` (1–30): forecast from tomorrow (Malaysia date) with lower/upper, event label and uplift, next-7-days total and range, last 30 days of actuals (today marked `partial_day`);
+    - `GET /restock/report?as_of=YYYY-MM-DD&risk=HIGH,MEDIUM`: summary counts, total pairs suggested, every group with sizes to look for and `demand_source`, brand roll-up;
+    - `POST /price/recommend`: brand and category must exist in the DB (case-insensitive), material must be in `config/shop.php` `materials`, condition `like_new|good|fair`, size 3.0–12.0 in 0.5 steps; `name` may be a new model (flagged `unseen_model`);
+    - `POST /admin/retrain`: runs `retrain.py` in the background, reloads the models and clears the cache (409 if one is already running).
+  - Forecast and restock report are cached in memory for 1 hour (cleared by a retrain or a restart).
+  - Errors are JSON `{error, details}`: 422 for bad input (readable messages), 503 when a model file is missing or the database is down.
+- **Retrain without the API:** `ml-service\venv\Scripts\python ml-service\retrain.py` refits all 3 models from the current database with the notebooks' final settings (about 45 s), writes files atomically and keeps the notebooks' evaluation figures in the metadata. Restart the API afterwards.
+- **Tests:** `ml-service\venv\Scripts\python -m pytest ml-service\tests -v` (15 tests, TestClient). They use the saved models and the real MySQL database.
+
+### ML admin pages (Laravel side)
+- **Client:** `App\Services\Ml\MlService`, configured in `config/services.php` `ml` (`ML_API_URL`, `ML_API_KEY`, `ML_API_TIMEOUT` 5 s, connect 2 s, retrain 30 s).
+  - It sends `X-API-Key` and **never throws**: every call returns an `App\Services\Ml\MlResult` (`ok()`, `get()`, `error`, `details`, `status`, `offline()`), and failures are logged without the key.
+  - If the URL or key is empty it doesn't call at all and reports "not configured". `phpunit.xml` sets both empty, so tests must set `config('services.ml.*')` and use `Http::fake()` (see `MlInsightsTest`).
+- **Admin sidebar "Insights"** (admin middleware, `InsightsController`):
+  - **Revenue forecast** (`admin.insights.forecast`, `?days=7|30`): `<x-admin.forecast-chart>`, a server-rendered SVG with actual + forecast lines, a shaded 80% band and red event labels (11.11 …). Cards compare the next 7 days with the last 7 complete days; the table lists each day; "Model trained until".
+  - **Restock** (`admin.insights.restock`, `?risk=HIGH|MEDIUM|LOW|OVERSTOCK`, filtered in PHP):
+    - risk cards and total pairs to restock;
+    - the group table, with sizes to look for and the demand source ("In-stock rate" has a tooltip);
+    - Overstock suggests a 15% markdown (`OVERSTOCK_MARKDOWN_PERCENT`), and each group links to the Products list filtered by model + size band (`size_min`/`size_max` on `admin.products.index`; bands in `InsightsController::SIZE_BANDS`);
+    - brand roll-up.
+    - **Presentation only** (the ML output is unchanged): `InsightsController::parseSizes()` turns the API's "UK 7 x2 (28%), …" (most popular first) into chips **sorted by size**, with the share in each chip's `title`. Priority chips (2+ pairs, or the group's top share) are dark green.
+    - Each group shows a band badge (`bandLabel()`: "Small · UK 3–5.5").
+    - `?view=list` is the **Shopping list**: groups with restock > 0, per model, highest risk first, sizes grouped by band, with a checkbox per size (client-side only, not saved). Print uses `print:` classes (the sidebar, cards, filters and tables are hidden).
+    - **Export CSV** is `admin.insights.restock.csv` (model, brand, size band, size, quantity, risk; one row per size). The risk filter applies to both views and the CSV.
+  - **ML status** (`admin.insights.status`): API online/offline, each model's name, trained-until date and key metric, cache, last retrain. "Retrain now" posts `admin.insights.retrain` (confirm dialog, flash message; 409 = already running).
+  - Every page renders when the API is down (`<x-admin.ml-offline>`).
+- **Product form:**
+  - It now has **Retail price (RM)** (`retail_price`, optional, validated in `ProductRequest`).
+  - **Suggest price** posts the form values as JSON to `admin.products.suggest-price` (`PriceSuggestionController`), which maps `category_id` to the category name and calls the API.
+  - The panel shows the price, the 80% range, the reasons that add up, warnings and notes. **Use this price** only fills the field; nothing is saved.
+  - API validation errors come back as plain sentences ("Size (UK): must be …").
+- **Dashboard:** 2 small cards ("Forecast next 7 days: RM X", "N groups need restock (HIGH)") or a muted "ML insights offline" note.
+- **Weekly retrain:** `php artisan ml:retrain` (`App\Console\Commands\MlRetrain`) is scheduled `weeklyOn(0, '03:00')` in Malaysia time in `routes/console.php`. Locally the scheduler needs `php artisan schedule:work`.
+- **Database:** `ml-service/db.py` `get_engine()` (SQLAlchemy + pymysql) reads `ml-service/.env`, which holds copies of Laravel's `DB_HOST/PORT/DATABASE/USERNAME/PASSWORD`. Update it when the Laravel DB settings change. `ml-service/venv` and `ml-service/.env` are in `.gitignore`; never commit credentials.
+- **Times:** the database stores UTC. Convert to Malaysia time (+8 h) before grouping by day, as `SalesReport` does.
+- **Training data:** `ThriftHistorySeeder` (semi-synthetic history, Nov 2024 – Nov 2026, CSVs in `database/seeders/data/thrift/`, source package in `thrift-ml-dataset/`). It **wipes** products, orders, carts, reviews, returns, interactions and notifications, and keeps only the test accounts in `KEEP_EMAILS`. Back up the database before running it. It added `products.retail_price` (nullable, fillable), used by price recommendation.
+
+## Loyalty points
+
+- **Rules:** all in `config/loyalty.php`.
+  - Earn 1 point per RM1 of **item subtotal** (shipping excluded, rounded down), credited when the order becomes **Completed**.
+  - Redeem in blocks of 100 points = RM5, from 100 points, at most 50% of the item subtotal.
+  - Points expire 12 months after they were earned.
+- **Ledger:** `point_transactions` (`PointTransaction`, type enum `PointTransactionType`: earn, redeem, reverse_earn, return_redeem, expire, adjust).
+  - `points` is signed and `balance_after` is the running balance. Rows that add points are **lots** with `expires_at` and `remaining`.
+  - Rows that remove points store which lots they used in `allocations`. Points are used and expire **oldest first (FIFO)**.
+  - Invariant: a customer's latest `balance_after` = sum of `remaining` of their lots.
+- **`App\Services\Loyalty\PointsService`** is the only writer.
+  - Every write locks the customer's `users` row (`lockForUpdate`), expires due points, then changes the ledger, so the balance can't go negative or be spent twice. Concurrent redeems queue on the lock (only testable on MySQL).
+  - `balance()` counts unexpired lots only, so expired points are never usable even before the job runs.
+  - **Customer-facing values:** "worth RM X" uses `discountFor()` (whole blocks). Reports use `valueOf()` (exact liability).
+- **Order flow hook:** `App\Observers\OrderPointsObserver` (registered in `AppServiceProvider`) runs on order `updated`, inside the callers' transactions, without changing any status logic:
+  - → Completed: `earnFor` (once);
+  - → Cancelled / Failed: return the redeemed points into their original lots (they keep their expiry);
+  - → Refunded, or a partial refund on a completed order: take back earned points in proportion to `refunded_amount / total` (never below 0; any shortfall is noted).
+- **Checkout:**
+  - `orders.points_redeemed` and `orders.points_discount`. **`orders.total` is stored after the discount**, so HitPay's amount, the COD amount, refunds and SalesReport revenue all use the discounted total.
+  - `$order->subtotal` adds the discount back (items total).
+  - `PlaceOrder::handle(..., int $points)` checks the rules (`redeemError`) and calls `PointsService::redeem` inside its transaction, so any failure rolls the points back. A `PointsException` becomes a `points` validation error.
+  - **The page's `expected_total` is the total before points**; the discount follows from the points chosen. A tiny inline `onchange` updates the summary.
+  - Discount lines are shown in `<x-order-summary>`, the receipt and the admin order page.
+- **Pages:**
+  - Customer: **My points** (`account.points`, `/account/points`): balance, expiring in 30 days, history. It is only ever the signed-in user's own ledger. The product page shows "Earn X points".
+  - Admin:
+    - the order page has a "Loyalty points" panel with a link to **customer points** (`admin.customers.points`, `/admin/customers/{user}/points`): history plus a manual adjust form (`+`/`-` points, **reason required**, admin id stored in `admin_id`);
+    - Reports shows "Points outstanding (now)".
+- **Commands:**
+  - `loyalty:expire` is scheduled daily at 00:30 Malaysia time.
+  - `loyalty:backfill` gives points for existing Completed orders, dated by completion (COD: `paid_at`; online: `delivered_at`), with expiry and partial refunds in date order. It is idempotent.
+  - On the dev DB: 2,177 orders, 351,345 points outstanding; `customer@thriftstore.test` has 4,370 points.
+- **No notifications** are sent for points.
+- **Tests:** `tests/Feature/Loyalty/PointsTest.php`.
+
 ## Thrift product details
 
 - **Fields** (all optional; existing products show "Not specified"):
@@ -304,7 +407,12 @@ The tables are users → orders → order_items ← products → product_images,
 
 ## Product images
 
-- Files go on the `public` disk under `products/{product_id}/`; `public/storage` is linked via `php artisan storage:link`. Build URLs with `ProductImage->url`, which uses `asset()` so it ignores `APP_URL` and returns null when the file is missing (the seeded image paths are placeholders with no files).
+- Files go on the `public` disk under `products/{product_id}/`; `public/storage` is linked via `php artisan storage:link`. Build URLs with `ProductImage->url`, which uses `asset()` so it ignores `APP_URL` and returns null when the file is missing ("No image" in the admin list, `<x-shoe-placeholder>` in the shop).
+- **Seeded photos (no real ones exist yet):** the original seed paths never had files, and `ThriftHistorySeeder` re-used those paths, so every product showed "No image". The fix:
+  - `scripts/make_demo_photos.py` (Pillow, run with `ml-service\venv\Scripts\python`) draws one labelled **"DEMO IMAGE"** per model + colour into `storage/app/demo-photos/` (git-ignored; re-run to recreate), named `{model}--{colour}.jpg`, e.g. `nike-dunk-low--green-white.jpg`.
+  - `php artisan products:attach-photos [dir]` (`AttachProductPhotos`) links files by model + colour, falling back to `{model}.jpg`. It only touches products **without a photo file**. Available/hidden pairs get their own copy `products/{id}/attached-….jpg`; sold pairs share `products/library/{file}`. Run it after `ThriftHistorySeeder`.
+  - **Real photos later:** put files with the same names in a folder and run `php artisan products:attach-photos <folder> --replace`. That replaces only photos the command attached; admin uploads are never touched.
+  - Because files can be shared, removed images are deleted with `ProductImage::deleteUnusedFiles()`, which skips files another row still uses.
 - Always call `Product::ensurePrimaryImage($preferredId)` after adding or removing images; it maintains the "exactly one primary" invariant.
 - File/DB consistency: new uploads are stored inside the transaction and deleted if it fails; removed files are deleted only after the DB change commits.
 - Deleting a product that has order items is refused with a flash error (and the `order_items` FK restricts it anyway). Hiding a product is the alternative.

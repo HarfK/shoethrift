@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use App\Services\Checkout\PlaceOrder;
+use App\Services\Ml\MlService;
 use App\Services\Reports\ReportPeriod;
 use App\Services\Reports\SalesReport;
 use Carbon\CarbonImmutable;
@@ -23,7 +24,7 @@ class DashboardController extends Controller
 {
     public const CHART_DAYS = 30;
 
-    public function __invoke(): View
+    public function __invoke(MlService $ml): View
     {
         $now = ReportPeriod::now();
         $last30 = new SalesReport(ReportPeriod::custom($now->subDays(self::CHART_DAYS - 1), $now));
@@ -38,11 +39,30 @@ class DashboardController extends Controller
             'lowStock' => $this->lowStock(),
             'outOfStock' => Product::where('status', ProductStatus::Available)->where('stock', 0)->orderBy('name')->get(),
             'recentOrders' => Order::with('user')->latest()->latest('id')->limit(8)->get(),
+            'ml' => $this->mlInsights($ml),
             'catalogue' => [
                 'Available products' => Product::available()->count(),
                 'Customers' => User::where('role', UserRole::Customer)->count(),
             ],
         ]);
+    }
+
+    /**
+     * Two small ML cards: next 7 days' forecast and the number of HIGH-risk restock groups.
+     * Null when the ML API is offline (the dashboard then shows a muted note).
+     *
+     * @return array{next7: float, high: int}|null
+     */
+    private function mlInsights(MlService $ml): ?array
+    {
+        $forecast = $ml->forecast(7);
+        $restock = $forecast->ok() ? $ml->restock() : null;
+
+        if (! $forecast->ok() || ! $restock?->ok()) {
+            return null;
+        }
+
+        return ['next7' => (float) $forecast->get('next_7_days.total'), 'high' => (int) $restock->get('summary.by_risk.HIGH', 0)];
     }
 
     /**

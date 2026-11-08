@@ -1,0 +1,6 @@
+model,MAE (units),RMSE (units),bias (units),80% upper coverage (%),sell-out precision,sell-out recall,sell-out F1,F1 (upper-bound rule),recall (upper-bound rule),sell-outs (actual),group-weeks scored
+Random forest + censored-demand correction,0.74,0.95,-0.077,85.086,0.669,0.564,0.612,0.624,0.843,140,773
+Moving average,0.849,1.175,-0.188,76.766,0.591,0.486,0.533,0.537,0.7,140,773
+Random forest,0.74,0.95,-0.077,85.086,0.712,0.407,0.518,0.611,0.814,140,773
+Poisson regression,0.803,1.064,-0.09,84.929,0.845,0.35,0.495,0.641,0.821,140,773
+XGBoost (Poisson),0.739,0.954,-0.133,85.714,0.742,0.329,0.455,0.628,0.85,140,773

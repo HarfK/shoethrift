@@ -1,0 +1,9 @@
+model,MAE (RM),RMSE (RM),R2,MAPE (%),within RM20 (%),within 15% (%),80% range coverage (%),unseen-model MAE (RM),target,kept for selection
+Random forest (ratio),28.726,41.392,0.912,11.274,52.802,75.221,81.121,60.536,ratio,True
+Random forest (price),29.574,42.402,0.908,11.7,50.147,70.796,79.646,70.911,price,False
+LightGBM (ratio),31.809,43.21,0.904,14.691,40.708,61.062,68.732,63.285,ratio,True
+Baseline (median ratio),34.922,52.295,0.86,12.443,51.032,66.077,77.876,81.787,ratio,True
+LightGBM (price),35.321,45.959,0.891,18.096,31.563,56.637,61.947,74.174,price,False
+Ridge (price),37.135,54.453,0.848,16.281,41.593,62.537,77.286,81.419,price,True
+XGBoost (ratio),42.185,53.259,0.854,21.825,28.319,46.313,54.572,65.304,ratio,True
+XGBoost (price),48.046,58.38,0.825,28.956,22.419,43.953,51.917,79.414,price,False

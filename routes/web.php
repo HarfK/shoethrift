@@ -3,14 +3,18 @@
 use App\Http\Controllers\Account\AddressController;
 use App\Http\Controllers\Account\NotificationController as AccountNotificationController;
 use App\Http\Controllers\Account\PhoneVerificationController;
+use App\Http\Controllers\Account\PointsController as AccountPointsController;
 use App\Http\Controllers\Account\PreferenceController;
 use App\Http\Controllers\Account\ProfileController;
 use App\Http\Controllers\AccountOrderController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\ContactMessageController;
+use App\Http\Controllers\Admin\CustomerPointsController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\InsightsController;
 use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\PriceSuggestionController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\ReservationController;
@@ -86,6 +90,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('/account/addresses/{address}/default', [AddressController::class, 'makeDefault'])->whereNumber('address')->name('account.addresses.default');
 
     Route::get('/account/orders', [AccountOrderController::class, 'index'])->name('account.orders.index');
+    Route::get('/account/points', AccountPointsController::class)->name('account.points');
     Route::get('/account/notifications', [AccountNotificationController::class, 'index'])->name('account.notifications.index');
     Route::post('/account/notifications/read-all', [AccountNotificationController::class, 'readAll'])->name('account.notifications.read-all');
     Route::post('/account/notifications/{id}/open', [AccountNotificationController::class, 'open'])->name('account.notifications.open');
@@ -129,6 +134,7 @@ Route::post('/logout', [LoginController::class, 'destroy'])->middleware('auth')-
 
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', DashboardController::class)->name('dashboard');
+    Route::post('products/suggest-price', PriceSuggestionController::class)->name('products.suggest-price');
     Route::resource('products', ProductController::class)->except('show');
     Route::resource('categories', CategoryController::class)->except('show');
     // Orders come from checkout and are never deleted, so admins can only view them and change status.
@@ -152,6 +158,17 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::patch('reviews/{review}/checked', [AdminReviewController::class, 'markChecked'])->name('reviews.checked');
     Route::patch('review-media/{media}/visibility', [AdminReviewController::class, 'toggleMedia'])->name('review-media.toggle');
     Route::delete('review-media/{media}', [AdminReviewController::class, 'destroyMedia'])->name('review-media.destroy');
+
+    // Insights: ML forecast, restock report and model status (App\Services\Ml\MlService).
+    Route::get('insights/forecast', [InsightsController::class, 'forecast'])->name('insights.forecast');
+    Route::get('insights/restock', [InsightsController::class, 'restock'])->name('insights.restock');
+    Route::get('insights/restock/shopping-list.csv', [InsightsController::class, 'restockCsv'])->name('insights.restock.csv');
+    Route::get('insights/ml-status', [InsightsController::class, 'status'])->name('insights.status');
+    Route::post('insights/ml-status/retrain', [InsightsController::class, 'retrain'])->name('insights.retrain');
+
+    // Loyalty points per customer (history + manual adjust).
+    Route::get('customers/{user}/points', [CustomerPointsController::class, 'index'])->name('customers.points');
+    Route::post('customers/{user}/points', [CustomerPointsController::class, 'adjust'])->name('customers.points.adjust');
 
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('reports/pdf', [ReportController::class, 'pdf'])->name('reports.pdf');

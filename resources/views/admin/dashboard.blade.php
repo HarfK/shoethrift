@@ -25,6 +25,22 @@
         @endforeach
     </dl>
 
+    {{-- ML insights (ml-service API); a muted note when it's offline. --}}
+    @if ($ml)
+        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2" data-ml-cards>
+            <a href="{{ route('admin.insights.forecast') }}" class="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-3 text-sm shadow-sm hover:border-emerald-300">
+                <span class="text-stone-600">Forecast next 7 days</span>
+                <span class="font-semibold tabular-nums">RM {{ number_format($ml['next7'], 0) }} &rarr;</span>
+            </a>
+            <a href="{{ route('admin.insights.restock', ['risk' => 'HIGH']) }}" class="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-3 text-sm shadow-sm hover:border-emerald-300">
+                <span class="text-stone-600">{{ $ml['high'] }} {{ str('group')->plural($ml['high']) }} need restock (HIGH)</span>
+                <span class="font-semibold">&rarr;</span>
+            </a>
+        </div>
+    @else
+        <p class="mt-4 text-sm text-stone-400" data-ml-offline-note>ML insights offline · <a href="{{ route('admin.insights.status') }}" class="underline hover:text-stone-600">ML status</a></p>
+    @endif
+
     <div class="mt-6 grid gap-6 xl:grid-cols-3">
         <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm xl:col-span-2">
             <h2 class="text-base font-semibold">Sales, last {{ \App\Http\Controllers\Admin\DashboardController::CHART_DAYS }} days</h2>

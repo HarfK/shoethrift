@@ -47,6 +47,9 @@
     <dl class="space-y-1.5 border-t border-stone-200 p-4 text-sm">
         <div class="flex justify-between"><dt class="text-stone-600">Subtotal</dt><dd class="tabular-nums">RM {{ number_format($order->subtotal, 2) }}</dd></div>
         <div class="flex justify-between"><dt class="text-stone-600">Shipping</dt><dd class="tabular-nums">RM {{ number_format($order->shipping_fee, 2) }}</dd></div>
+        @if ($order->points_redeemed > 0)
+            <div class="flex justify-between text-emerald-800" data-points-discount><dt>Points discount ({{ number_format($order->points_redeemed) }} points)</dt><dd class="tabular-nums">−RM {{ number_format($order->points_discount, 2) }}</dd></div>
+        @endif
         <div class="flex justify-between pt-1.5 text-base font-semibold"><dt>Total</dt><dd class="tabular-nums">RM {{ number_format($order->total, 2) }}</dd></div>
     </dl>
 </section>

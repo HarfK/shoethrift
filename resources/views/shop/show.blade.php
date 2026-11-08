@@ -51,6 +51,7 @@
 
                 <div class="mt-3 flex flex-wrap items-center gap-3">
                     <p class="text-2xl font-semibold tabular-nums">RM {{ number_format($product->price, 2) }}</p>
+                    <p class="text-sm text-emerald-700" data-earn-points>Earn {{ number_format(app(\App\Services\Loyalty\PointsService::class)->pointsForSubtotal($product->price)) }} points</p>
                     @unless ($available)
                         <span class="rounded-full bg-stone-900 px-3 py-1 text-xs font-bold uppercase tracking-wider text-white">Sold</span>
                     @endunless

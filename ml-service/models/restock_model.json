@@ -1,0 +1,163 @@
+{
+  "model_name": "Random forest",
+  "model_class": "restock.models.RandomForestModel",
+  "target": "pairs sold per group in the next 14 days (group = products.name x size band S/M/L)",
+  "size_bands": {
+    "S": "UK 3.0-5.5",
+    "M": "UK 6.0-8.5",
+    "L": "UK 9.0-12.0"
+  },
+  "features": [
+    "stock",
+    "sold_7",
+    "sold_14",
+    "sold_28",
+    "sold_56",
+    "days_since_last_sale",
+    "trend_28",
+    "avg_price",
+    "avg_price_ratio",
+    "views_14",
+    "next14_major_event_days",
+    "next14_payday_days",
+    "brand",
+    "category",
+    "size_band"
+  ],
+  "training": "snapshots (Mondays) with stock >= 2, 2024-12-30 to 2026-10-19, 4705 rows",
+  "censored_demand": "trained on stock >= 2 only; predictions clip the stock input to >= 2 (demand if pairs were available)",
+  "upper_bound": "80% quantile of Poisson(predicted demand)",
+  "trained_until": "2026-11-07",
+  "selection": "sell-out F1 first, MAE as tiebreak. The moving average had the highest F1 (0.533) but the random forest (0.518) is statistically tied (paired bootstrap gap interval includes 0), so the MAE tiebreak picks the random forest (0.740 vs 0.849).",
+  "censored_demand_correction": {
+    "censor_stock_below": 2,
+    "in_stock_window_days": 180,
+    "min_in_stock_days": 14,
+    "rule": "groups with stock < 2: demand = max(model, sales in last 180 days / in-stock days x 14)"
+  },
+  "evaluation": {
+    "test_mondays": [
+      "2026-07-27",
+      "2026-08-03",
+      "2026-08-10",
+      "2026-08-17",
+      "2026-08-24",
+      "2026-08-31",
+      "2026-09-07",
+      "2026-09-14",
+      "2026-09-21",
+      "2026-09-28",
+      "2026-10-05",
+      "2026-10-12",
+      "2026-10-19"
+    ],
+    "metrics": {
+      "MAE (units)": 0.7396,
+      "RMSE (units)": 0.9498,
+      "bias (units)": -0.0767,
+      "80% upper coverage (%)": 85.0863,
+      "sell-out precision": 0.6695,
+      "sell-out recall": 0.5643,
+      "sell-out F1": 0.6124,
+      "F1 (upper-bound rule)": 0.6243,
+      "recall (upper-bound rule)": 0.8429,
+      "sell-outs (actual)": 140.0,
+      "group-weeks scored": 773.0
+    },
+    "all_models": [
+      {
+        "model": "Random forest + censored-demand correction",
+        "MAE (units)": 0.7396,
+        "RMSE (units)": 0.9498,
+        "bias (units)": -0.0767,
+        "80% upper coverage (%)": 85.0863,
+        "sell-out precision": 0.6695,
+        "sell-out recall": 0.5643,
+        "sell-out F1": 0.6124,
+        "F1 (upper-bound rule)": 0.6243,
+        "recall (upper-bound rule)": 0.8429,
+        "sell-outs (actual)": 140,
+        "group-weeks scored": 773
+      },
+      {
+        "model": "Moving average",
+        "MAE (units)": 0.8493,
+        "RMSE (units)": 1.1747,
+        "bias (units)": -0.1884,
+        "80% upper coverage (%)": 76.7661,
+        "sell-out precision": 0.5913,
+        "sell-out recall": 0.4857,
+        "sell-out F1": 0.5333,
+        "F1 (upper-bound rule)": 0.537,
+        "recall (upper-bound rule)": 0.7,
+        "sell-outs (actual)": 140,
+        "group-weeks scored": 773
+      },
+      {
+        "model": "Random forest",
+        "MAE (units)": 0.7396,
+        "RMSE (units)": 0.9498,
+        "bias (units)": -0.0767,
+        "80% upper coverage (%)": 85.0863,
+        "sell-out precision": 0.7125,
+        "sell-out recall": 0.4071,
+        "sell-out F1": 0.5182,
+        "F1 (upper-bound rule)": 0.6113,
+        "recall (upper-bound rule)": 0.8143,
+        "sell-outs (actual)": 140,
+        "group-weeks scored": 773
+      },
+      {
+        "model": "Poisson regression",
+        "MAE (units)": 0.8027,
+        "RMSE (units)": 1.0641,
+        "bias (units)": -0.0901,
+        "80% upper coverage (%)": 84.9294,
+        "sell-out precision": 0.8448,
+        "sell-out recall": 0.35,
+        "sell-out F1": 0.4949,
+        "F1 (upper-bound rule)": 0.6407,
+        "recall (upper-bound rule)": 0.8214,
+        "sell-outs (actual)": 140,
+        "group-weeks scored": 773
+      },
+      {
+        "model": "XGBoost (Poisson)",
+        "MAE (units)": 0.7385,
+        "RMSE (units)": 0.9544,
+        "bias (units)": -0.1333,
+        "80% upper coverage (%)": 85.7143,
+        "sell-out precision": 0.7419,
+        "sell-out recall": 0.3286,
+        "sell-out F1": 0.4554,
+        "F1 (upper-bound rule)": 0.628,
+        "recall (upper-bound rule)": 0.85,
+        "sell-outs (actual)": 140,
+        "group-weeks scored": 773
+      }
+    ]
+  },
+  "report_config": {
+    "horizon_days": 14,
+    "high_cover_days": 7,
+    "medium_cover_days": 14,
+    "overstock_cover_days": 90,
+    "overstock_min_stock": 3,
+    "size_history_days": 180,
+    "size_smoothing": 0.5,
+    "censor_stock_below": 2,
+    "in_stock_window_days": 180,
+    "min_in_stock_days": 14
+  },
+  "created_at": "2026-11-08T08:07:06+00:00",
+  "versions": {
+    "pandas": "3.1.1",
+    "numpy": "2.5.4",
+    "scikit-learn": "1.9.1",
+    "xgboost": "3.4.1",
+    "joblib": "1.6.0"
+  },
+  "load": "sys.path.insert(0, 'ml-service'); from restock.report import build_restock_report; build_restock_report('2026-11-08')",
+  "retrained_at": "2026-11-08T09:32:29+00:00",
+  "retrained_by": "retrain.py (evaluation figures are from the notebook backtest)"
+}

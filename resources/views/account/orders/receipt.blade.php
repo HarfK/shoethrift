@@ -71,6 +71,9 @@
                 <tfoot class="border-t border-stone-200">
                     <tr><th scope="row" colspan="3" class="pt-3 text-right font-normal text-stone-600">Subtotal</th><td class="pt-3 text-right tabular-nums">RM {{ number_format($order->subtotal, 2) }}</td></tr>
                     <tr><th scope="row" colspan="3" class="pt-1 text-right font-normal text-stone-600">Shipping</th><td class="pt-1 text-right tabular-nums">RM {{ number_format($order->shipping_fee, 2) }}</td></tr>
+                    @if ($order->points_redeemed > 0)
+                        <tr data-points-discount><th scope="row" colspan="3" class="pt-1 text-right font-normal text-stone-600">Points discount ({{ number_format($order->points_redeemed) }} points)</th><td class="pt-1 text-right tabular-nums">−RM {{ number_format($order->points_discount, 2) }}</td></tr>
+                    @endif
                     <tr><th scope="row" colspan="3" class="pt-2 text-right text-base font-semibold">Total paid</th><td class="pt-2 text-right text-base font-semibold tabular-nums">RM {{ number_format($order->total, 2) }}</td></tr>
                 </tfoot>
             </table>

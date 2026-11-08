@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\Loyalty\PointsService;
 use App\Services\Reports\ReportPeriod;
 use App\Services\Reports\SalesReport;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -96,6 +97,9 @@ class ReportController extends Controller
             'byProduct' => $report->byProduct(),
             'byCategory' => $report->byCategory(),
             'byPaymentMethod' => $report->byPaymentMethod(),
+            // Loyalty points customers can still use (a liability), and what they are worth.
+            'pointsOutstanding' => $outstanding = app(PointsService::class)->outstanding(),
+            'pointsOutstandingValue' => app(PointsService::class)->valueOf($outstanding),
         ];
     }
 
@@ -118,32 +122,77 @@ class ReportController extends Controller
         ]);
 
         $tz = ReportPeriod::timezone();
-        $today = ReportPeriod::now();
+        $today = ReportPeriod::now()->startOfDay();
         $type = $data['period'] ?? 'month';
-        $date = isset($data['date']) ? CarbonImmutable::createFromFormat('Y-m-d', $data['date'], $tz) : $today;
+        $parse = fn (string $value) => CarbonImmutable::createFromFormat('!Y-m-d', $value, $tz);
+        $date = isset($data['date']) ? $parse($data['date']) : $today;
 
         try {
             $period = match ($type) {
                 'day' => ReportPeriod::day($date),
                 'week' => ReportPeriod::week($date),
-                'month' => ReportPeriod::month(isset($data['month']) ? CarbonImmutable::createFromFormat('Y-m-d', $data['month'].'-01', $tz) : $today),
-                'custom' => ReportPeriod::custom(
-                    CarbonImmutable::createFromFormat('Y-m-d', $data['from'], $tz),
-                    CarbonImmutable::createFromFormat('Y-m-d', $data['to'], $tz),
-                ),
+                'month' => ReportPeriod::month(isset($data['month']) ? $parse($data['month'].'-01') : $today),
+                'custom' => ReportPeriod::custom($parse($data['from']), $parse($data['to'])),
             };
         } catch (InvalidArgumentException $e) {
             throw ValidationException::withMessages(['to' => $e->getMessage()]);
         }
 
-        $filters = [
-            'period' => $type,
-            'date' => $date->format('Y-m-d'),
-            'month' => $period->start->format('Y-m'),
-            'from' => $data['from'] ?? $today->startOfMonth()->format('Y-m-d'),
-            'to' => $data['to'] ?? $today->format('Y-m-d'),
-        ];
+        // No future periods. A week or month that has started is fine ("so far").
+        if ($period->start->greaterThan($today) || ($type !== 'week' && $type !== 'month' && $period->end->startOfDay()->greaterThan($today))) {
+            throw ValidationException::withMessages(match ($type) {
+                'day' => ['date' => 'The date can\'t be in the future.'],
+                'week' => ['date' => 'The week can\'t be in the future.'],
+                'month' => ['month' => 'The month can\'t be in the future.'],
+                'custom' => ['to' => 'The end date can\'t be in the future.'],
+            });
+        }
 
-        return [new SalesReport($period), $filters];
+        return [new SalesReport($period), $this->filtersFor($period)];
+    }
+
+    /**
+     * The canonical query for a resolved period: what the picker restores, and what Print / PDF / CSV
+     * links use, so every output covers exactly the range on screen.
+     *
+     * @return array<string, string>
+     */
+    public static function queryFor(ReportPeriod $period): array
+    {
+        return match ($period->type) {
+            'day' => ['period' => 'day', 'date' => $period->start->format('Y-m-d')],
+            'week' => ['period' => 'week', 'date' => $period->start->format('Y-m-d')], // always the Monday
+            'month' => ['period' => 'month', 'month' => $period->start->format('Y-m')],
+            default => ['period' => 'custom', 'from' => $period->start->format('Y-m-d'), 'to' => $period->end->format('Y-m-d')],
+        };
+    }
+
+    /**
+     * Picker state + quick presets for the page.
+     *
+     * @return array<string, mixed>
+     */
+    private function filtersFor(ReportPeriod $period): array
+    {
+        $today = ReportPeriod::now()->startOfDay();
+        $presets = [
+            'Today' => ReportPeriod::day($today),
+            'Yesterday' => ReportPeriod::day($today->subDay()),
+            'Last 7 days' => ReportPeriod::custom($today->subDays(6), $today),
+            'This month' => ReportPeriod::month($today),
+            'Last month' => ReportPeriod::month($today->subMonthNoOverflow()),
+        ];
+        $query = self::queryFor($period);
+
+        return [
+            ...$query,
+            'query' => $query,
+            'today' => $today->format('Y-m-d'),
+            'max_days' => ReportPeriod::MAX_CUSTOM_DAYS,
+            'presets' => array_map(fn (ReportPeriod $preset) => [
+                'query' => $q = self::queryFor($preset),
+                'active' => $q === $query,
+            ], $presets),
+        ];
     }
 }

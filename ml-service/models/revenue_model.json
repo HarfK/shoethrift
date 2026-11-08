@@ -1,0 +1,145 @@
+{
+  "version": "v2",
+  "model_name": "XGBoost + major-event uplift",
+  "model_class": "forecasting.adjust.EventAdjusted",
+  "base_model": "forecasting.models.XGBoostModel",
+  "base_settings": {
+    "sarima_order": [
+      2,
+      1,
+      2
+    ],
+    "sarima_seasonal_order": [
+      0,
+      1,
+      1,
+      7
+    ],
+    "prophet_trend": "flat (no trend)"
+  },
+  "event_uplift": "major campaign events only",
+  "uplift_events": [
+    "11.11",
+    "12.12",
+    "black_friday",
+    "pre_raya",
+    "raya_closure"
+  ],
+  "event_multipliers_applied": {
+    "11.11": 2.024,
+    "12.12": 1.224,
+    "black_friday": 0.794,
+    "raya_closure": 0.815,
+    "pre_raya": 1.092
+  },
+  "event_multipliers_estimated_all": {
+    "9.9": 1.49,
+    "10.10": 1.426,
+    "11.11": 2.024,
+    "12.12": 1.224,
+    "black_friday": 0.794,
+    "raya_closure": 0.815,
+    "pre_raya": 1.092,
+    "chinese_new_year": 1.173,
+    "payday": 1.08
+  },
+  "interval": "calibrated 80% interval: 10th/90th percentile of inner-fold errors (last 182 days)",
+  "interval_offsets": {
+    "daily_low": -625.422,
+    "daily_high": 1097.93,
+    "weekly_low": 0.735,
+    "weekly_high": 1.772
+  },
+  "target": "daily net revenue (RM): paid orders (status paid/shipped/completed/refunded), dated by paid_at in Malaysia time (UTC+8), total - refunded_amount",
+  "trained_from": "2024-11-01",
+  "trained_until": "2026-11-07",
+  "training_days": 737,
+  "features": [
+    "day_of_week",
+    "day_of_month",
+    "month",
+    "payday",
+    "double_day",
+    "double_day_adjacent",
+    "black_friday",
+    "pre_raya",
+    "raya_closure",
+    "chinese_new_year",
+    "deepavali",
+    "back_to_school",
+    "month_end",
+    "december",
+    "lag_7",
+    "lag_14",
+    "lag_28",
+    "rolling_mean_7 (shifted 7)",
+    "rolling_mean_28 (shifted 7)",
+    "event uplift multipliers: 11.11, 12.12, black_friday, pre_raya, raya_closure",
+    "calibrated 80% interval (inner-fold error quantiles)"
+  ],
+  "selection": "business decision: XGBoost (lowest mean MAE of the base models over two rolling-origin test windows) with the event uplift applied only to major campaign events (11.11, 12.12, Black Friday, pre-Raya, Raya closure), so the admin sees the big sales days. The event list was fixed from the shop calendar, not tuned on the test windows. Plain XGBoost had the lowest mean MAE.",
+  "plain_xgboost_metrics": {
+    "A": {
+      "MAE (RM)": 587.16,
+      "RMSE (RM)": 737.48,
+      "WAPE (%)": 57.8,
+      "weekly total error (%)": 27.33,
+      "weekly total bias (%)": -3.71,
+      "80% interval coverage (%)": 75.82,
+      "model's own interval coverage (%)": 64.84
+    },
+    "B": {
+      "MAE (RM)": 488.91,
+      "RMSE (RM)": 681.06,
+      "WAPE (%)": 57.44,
+      "weekly total error (%)": 42.92,
+      "weekly total bias (%)": -21.31,
+      "80% interval coverage (%)": 66.67,
+      "model's own interval coverage (%)": 62.82
+    }
+  },
+  "evaluation": {
+    "A": {
+      "window": "Window A: 9 Aug \u2013 7 Nov 2026 (normal weeks)",
+      "from": "2026-08-09",
+      "until": "2026-11-07",
+      "metrics": {
+        "MAE (RM)": 587.16,
+        "RMSE (RM)": 737.48,
+        "WAPE (%)": 57.8,
+        "weekly total error (%)": 27.33,
+        "weekly total bias (%)": -3.71,
+        "80% interval coverage (%)": 74.73,
+        "model's own interval coverage (%)": 64.84
+      }
+    },
+    "B": {
+      "window": "Window B: 15 Oct \u2013 31 Dec 2025 (11.11, Black Friday, 12.12)",
+      "from": "2025-10-15",
+      "until": "2025-12-31",
+      "metrics": {
+        "MAE (RM)": 489.61,
+        "RMSE (RM)": 671.95,
+        "WAPE (%)": 57.52,
+        "weekly total error (%)": 41.11,
+        "weekly total bias (%)": -19.5,
+        "80% interval coverage (%)": 65.38,
+        "model's own interval coverage (%)": 64.1
+      }
+    }
+  },
+  "comparison_file": "reports/revenue_model_comparison.csv (v1: reports/revenue_model_comparison_v1.csv)",
+  "created_at": "2026-11-08T07:21:10+00:00",
+  "versions": {
+    "pandas": "3.1.1",
+    "numpy": "2.5.4",
+    "scikit-learn": "1.9.1",
+    "xgboost": "3.4.1",
+    "statsmodels": "0.15.0",
+    "prophet": "1.5.0",
+    "joblib": "1.6.0"
+  },
+  "load": "sys.path.insert(0, 'ml-service'); model = joblib.load('ml-service/models/revenue_model.joblib'); model.predict(dates); model.weekly_range(total)",
+  "retrained_at": "2026-11-08T09:32:18+00:00",
+  "retrained_by": "retrain.py (evaluation figures are from the notebook backtest)"
+}

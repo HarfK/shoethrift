@@ -40,7 +40,7 @@ final class ReportPeriod
     {
         $day = $date->setTimezone(self::timezone())->startOfDay();
 
-        return new self($day, $day->endOfDay(), $day->format('j M Y'), 'day');
+        return new self($day, $day->endOfDay(), $day->format('D j M Y'), 'day');
     }
 
     /**
@@ -51,7 +51,7 @@ final class ReportPeriod
         $start = $date->setTimezone(self::timezone())->startOfWeek(CarbonImmutable::MONDAY);
         $end = $start->addDays(6)->endOfDay();
 
-        return new self($start, $end, 'Week of '.$start->format('j M').' to '.$end->format('j M Y'), 'week');
+        return new self($start, $end, self::rangeLabel($start, $end), 'week');
     }
 
     public static function month(CarbonImmutable $date): self
@@ -76,7 +76,19 @@ final class ReportPeriod
             throw new InvalidArgumentException('Choose a range of at most '.self::MAX_CUSTOM_DAYS.' days.');
         }
 
-        return new self($start, $end, $start->format('j M Y').' to '.$end->format('j M Y'), 'custom');
+        return new self($start, $end, self::rangeLabel($start, $end), 'custom');
+    }
+
+    /**
+     * "2 Nov – 8 Nov 2026", or "29 Dec 2025 – 4 Jan 2026" across a new year.
+     */
+    public static function rangeLabel(CarbonImmutable $start, CarbonImmutable $end): string
+    {
+        if ($start->isSameDay($end)) {
+            return $start->format('D j M Y'); // a one-day custom range reads like a single day
+        }
+
+        return $start->format($start->year === $end->year ? 'j M' : 'j M Y').' – '.$end->format('j M Y');
     }
 
     /**

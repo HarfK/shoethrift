@@ -163,6 +163,16 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Loyalty points ledger (App\Services\Loyalty\PointsService).
+     *
+     * @return HasMany<PointTransaction, $this>
+     */
+    public function pointTransactions(): HasMany
+    {
+        return $this->hasMany(PointTransaction::class);
+    }
+
+    /**
      * @return HasMany<Address, $this>
      */
     public function addresses(): HasMany

@@ -11,6 +11,8 @@ use App\Models\Product;
 use App\Models\User;
 use App\Services\AdminNotifier;
 use App\Services\Cart\Reservations;
+use App\Services\Loyalty\PointsException;
+use App\Services\Loyalty\PointsService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -23,10 +25,15 @@ use Illuminate\Support\Facades\DB;
  *
  * Prices and totals are never taken from the request; the total the customer saw is only
  * compared, so a price change can't slip through unnoticed.
+ *
+ * Loyalty points: `$points` (blocks of 100) lower the stored total, which is what HitPay charges and COD
+ * collects. The expected total from the page is the total *before* points (the discount follows exactly from
+ * the points chosen). The points are taken from the customer's balance inside this transaction
+ * (PointsService::redeem locks the user row), so a failure anywhere rolls the points back too.
  */
 class PlaceOrder
 {
-    public function __construct(private readonly CashOnDeliveryPolicy $codPolicy) {}
+    public function __construct(private readonly CashOnDeliveryPolicy $codPolicy, private readonly PointsService $points) {}
 
     /**
      * @param  array<int, int>  $quantities  product id => quantity (from ShoppingCart::quantities())
@@ -36,10 +43,11 @@ class PlaceOrder
      * @throws PriceChangedException
      * @throws CashOnDeliveryNotAllowedException
      * @throws ReservationExpiredException the customer's cart hold ran out
+     * @throws PointsException the points can't be used (rules or balance)
      */
-    public function handle(User $user, array $quantities, array $shipping, string $expectedTotal, PaymentMethod $paymentMethod): Order
+    public function handle(User $user, array $quantities, array $shipping, string $expectedTotal, PaymentMethod $paymentMethod, int $points = 0): Order
     {
-        return DB::transaction(function () use ($user, $quantities, $shipping, $expectedTotal, $paymentMethod) {
+        return DB::transaction(function () use ($user, $quantities, $shipping, $expectedTotal, $paymentMethod, $points) {
             $products = Product::query()
                 ->whereIn('id', array_keys($quantities))
                 ->orderBy('id')
@@ -88,6 +96,13 @@ class PlaceOrder
                 throw new PriceChangedException(self::fromSen($totalSen));
             }
 
+            // Points rules (blocks, minimum, max share of the items); the balance is checked under lock in redeem().
+            if ($points !== 0 && $error = $this->points->redeemError($points, PHP_INT_MAX, self::fromSen($subtotalSen))) {
+                throw new PointsException($error);
+            }
+            $discountSen = self::toSen($this->points->discountFor($points));
+            $totalSen -= $discountSen;
+
             if ($paymentMethod === PaymentMethod::CashOnDelivery
                 && $reason = $this->codPolicy->unavailableReason($user, self::fromSen($totalSen))) {
                 throw new CashOnDeliveryNotAllowedException($reason);
@@ -99,6 +114,8 @@ class PlaceOrder
                 'status' => OrderStatus::Pending,
                 'total' => self::fromSen($totalSen),
                 'shipping_fee' => self::fromSen($shippingSen),
+                'points_redeemed' => $points,
+                'points_discount' => self::fromSen($discountSen),
                 'payment_method' => $paymentMethod,
                 // Online orders hold their stock only for the payment window (see orders:expire-unpaid).
                 'payment_expires_at' => $paymentMethod === PaymentMethod::Online
@@ -129,6 +146,10 @@ class PlaceOrder
                 if ($stockBefore > $lowStockThreshold && $product->stock >= 1 && $product->stock <= $lowStockThreshold) {
                     AdminNotifier::lowStock($product);
                 }
+            }
+
+            if ($points > 0) {
+                $this->points->redeem($user, $order, $points); // throws (and rolls back) if the balance is too low
             }
 
             // The cart holds become the order: the order now holds the stock (an online order keeps
