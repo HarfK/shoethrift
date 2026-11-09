@@ -136,6 +136,34 @@ class Product extends Model
     }
 
     /**
+     * Whether any of this product's images is a library file or demo copy (see ProductImage::isStock).
+     */
+    public function usesStockPhotos(): bool
+    {
+        return $this->images->contains(fn (ProductImage $image) => ProductImage::isStock($image->image_path));
+    }
+
+    /**
+     * @param  Builder<Product>  $query
+     */
+    #[Scope]
+    protected function usingStockPhotos(Builder $query): void
+    {
+        $query->whereHas('images', fn ($images) => $images->stock());
+    }
+
+    /**
+     * Has photos, none of them stock. Products with no photo at all are neither stock nor own.
+     *
+     * @param  Builder<Product>  $query
+     */
+    #[Scope]
+    protected function usingOwnPhotos(Builder $query): void
+    {
+        $query->whereHas('images')->whereDoesntHave('images', fn ($images) => $images->stock());
+    }
+
+    /**
      * Ensure exactly one image is primary whenever the product has images.
      *
      * The preferred image wins if it still exists; otherwise the current primary is kept,

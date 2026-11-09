@@ -13,7 +13,7 @@
         'condition' => ['Condition', ''], 'stock' => ['Stock', 'justify-end'], 'status' => ['Status', ''], 'created_at' => ['Date added', ''],
     ];
     $hasFilters = $filters['search'] !== '' || $filters['category'] || $filters['brand'] !== '' || $filters['status']
-        || $filters['size_min'] !== null || $filters['size_max'] !== null;
+        || $filters['size_min'] !== null || $filters['size_max'] !== null || $filters['photos'];
 @endphp
 
 <x-layouts.admin title="Products">
@@ -58,6 +58,14 @@
                 @foreach ($statuses as $status)
                     <option value="{{ $status->value }}" @selected($filters['status'] === $status->value)>{{ $status->label() }}</option>
                 @endforeach
+            </select>
+        </div>
+        <div class="w-full sm:w-40">
+            <label for="photos" class="mb-1 block text-sm font-medium text-stone-700">Photos</label>
+            <select id="photos" name="photos" class="block w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm">
+                <option value="">All</option>
+                <option value="stock" @selected($filters['photos'] === 'stock')>Stock photos</option>
+                <option value="own" @selected($filters['photos'] === 'own')>Own photos</option>
             </select>
         </div>
         @if ($sort !== \App\Http\Controllers\Admin\ProductController::DEFAULT_SORT || $direction !== \App\Http\Controllers\Admin\ProductController::DEFAULT_DIRECTION)
@@ -117,6 +125,9 @@
                                 <img src="{{ $url }}" alt="" class="size-12 rounded-md object-cover" loading="lazy">
                             @else
                                 <div class="flex size-12 items-center justify-center rounded-md bg-stone-100 text-[10px] text-stone-400">No image</div>
+                            @endif
+                            @if ($product->uses_stock_photos)
+                                <span class="mt-1 block whitespace-nowrap text-center text-[10px] font-medium text-amber-800" data-stock-photo>Stock photo</span>
                             @endif
                         </td>
                         <td class="px-4 py-3">

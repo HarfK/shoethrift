@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Console\Commands\AttachProductPhotos;
 use Database\Factories\ProductImageFactory;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -49,6 +52,39 @@ class ProductImage extends Model
         return Attribute::get(fn () => Storage::disk('public')->exists($this->image_path)
             ? asset('storage/'.$this->image_path)
             : null);
+    }
+
+    /**
+     * A stock photo is not a photo of this actual pair: a shared library file (products/library/)
+     * or a demo copy (products/{id}/attached-*). Everything else is a real upload.
+     */
+    public static function isStock(string $path): bool
+    {
+        return AttachProductPhotos::isAttached($path);
+    }
+
+    /**
+     * SQL version of isStock().
+     *
+     * @param  Builder<ProductImage>  $query
+     */
+    #[Scope]
+    protected function stock(Builder $query): void
+    {
+        $query->where(fn (Builder $query) => $query
+            ->where('image_path', 'like', AttachProductPhotos::LIBRARY_DIR.'/%')
+            ->orWhere('image_path', 'like', 'products/%/'.AttachProductPhotos::OWN_PREFIX.'%'));
+    }
+
+    /**
+     * Files in the shared library, the only photos that can be reused on another product.
+     *
+     * @param  Builder<ProductImage>  $query
+     */
+    #[Scope]
+    protected function library(Builder $query): void
+    {
+        $query->where('image_path', 'like', AttachProductPhotos::LIBRARY_DIR.'/%');
     }
 
     /**

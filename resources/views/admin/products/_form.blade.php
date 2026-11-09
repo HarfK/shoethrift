@@ -10,7 +10,9 @@
     <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6 lg:col-span-2">
         <h2 class="mb-4 text-base font-semibold">Details</h2>
 
-        <x-form.field name="name" label="Name" :value="$product->name" required maxlength="255" placeholder="e.g. Nike Air Jordan 1" />
+        <x-form.field name="name" label="Name" :value="$product->name" required maxlength="255" placeholder="e.g. Nike Air Jordan 1"
+                      list="name-options" autocomplete="off" data-suggest-url="{{ route('admin.products.name-suggestions') }}" />
+        <datalist id="name-options"></datalist>
 
         <x-form.field name="brand" label="Brand" :value="$product->brand" required maxlength="100" list="brand-options" placeholder="e.g. Nike" />
         <datalist id="brand-options">
@@ -41,7 +43,13 @@
             <x-form.field name="price" label="Price (RM)" type="number" step="0.01" min="0" required :value="$product->price" />
             <x-form.field name="retail_price" label="Retail price (RM)" type="number" step="0.01" min="0" :value="$product->retail_price" placeholder="Original price new (optional)" />
             <x-form.field name="size" label="Size (UK)" type="number" step="0.5" min="1" max="15" required :value="$product->size" placeholder="e.g. 8 or 8.5" />
-            <x-form.field name="color" label="Colour" :value="$product->color" maxlength="50" placeholder="e.g. Black/White" />
+            <div>
+                <x-form.field name="color" label="Colour" :value="$product->color" maxlength="50" placeholder="e.g. Black/White"
+                              list="color-options" autocomplete="off" data-suggest-url="{{ route('admin.products.color-suggestions') }}" />
+                <datalist id="color-options"></datalist>
+                <div id="color-chips" class="-mt-2 mb-4 flex flex-wrap gap-1.5 empty:hidden"></div>
+                <p id="color-hint" class="-mt-2 mb-4 hidden text-xs font-medium text-amber-800">New colour. Upload photos for it.</p>
+            </div>
             <x-form.field name="stock" label="Stock" type="number" step="1" min="0" required :value="$product->stock" />
             <x-form.select name="status" label="Status" required
                            :options="collect($statuses)->mapWithKeys(fn ($s) => [$s->value => $s->label()])" :value="$product->status?->value" />
@@ -95,6 +103,89 @@
             <div data-suggest-result class="mt-3 hidden text-sm" aria-live="polite"></div>
         </section>
         <script>
+            // Name suggestions: picking one fills Brand and Category only if they are empty. Free typing still works.
+            (() => {
+                const name = document.getElementById('name');
+                const list = document.getElementById('name-options');
+                const form = name.closest('form');
+                let known = new Map();
+                let timer;
+                let latest = 0;
+
+                const fillFromPick = () => {
+                    const pick = known.get(name.value.trim().toLowerCase());
+                    if (!pick) return;
+                    if (!form.elements.brand.value.trim()) form.elements.brand.value = pick.brand;
+                    if (!form.elements.category_id.value) form.elements.category_id.value = pick.category_id;
+                };
+
+                name.addEventListener('input', () => {
+                    fillFromPick();
+                    clearTimeout(timer);
+                    const q = name.value.trim();
+                    const ticket = ++latest;
+                    if (q === '') { list.replaceChildren(); return; }
+                    timer = setTimeout(async () => {
+                        try {
+                            const response = await fetch(name.dataset.suggestUrl + '?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } });
+                            const body = await response.json();
+                            if (ticket !== latest) return;
+                            known = new Map(body.suggestions.map((s) => [s.name.toLowerCase(), s]));
+                            list.replaceChildren(...body.suggestions.map((s) => { const o = document.createElement('option'); o.value = s.name; return o; }));
+                        } catch (error) { /* suggestions are optional; typing still works */ }
+                    }, 200);
+                });
+            })();
+
+            // Colour suggestions for the model in Name. Clicking a chip fires "input", which also runs the photo lookup.
+            (() => {
+                const name = document.getElementById('name');
+                const color = document.getElementById('color');
+                const chips = document.getElementById('color-chips');
+                const list = document.getElementById('color-options');
+                const hint = document.getElementById('color-hint');
+                let timer;
+                let latest = 0;
+
+                const show = (colors, isNew) => {
+                    list.replaceChildren(...colors.map((c) => { const o = document.createElement('option'); o.value = c; return o; }));
+                    chips.replaceChildren(...colors.map((c) => {
+                        const chip = document.createElement('button');
+                        chip.type = 'button';
+                        chip.className = 'rounded-full border border-stone-300 bg-white px-2.5 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-100';
+                        chip.textContent = c;
+                        chip.addEventListener('click', () => {
+                            color.value = c;
+                            color.dispatchEvent(new Event('input', { bubbles: true }));
+                            color.focus();
+                        });
+                        return chip;
+                    }));
+                    hint.classList.toggle('hidden', !isNew);
+                };
+
+                const refresh = async () => {
+                    const model = name.value.trim();
+                    const typed = color.value.trim();
+                    const ticket = ++latest;
+                    if (model === '') { show([], false); return; }
+                    try {
+                        const response = await fetch(color.dataset.suggestUrl + '?name=' + encodeURIComponent(model) + '&q=' + encodeURIComponent(typed), { headers: { 'Accept': 'application/json' } });
+                        const body = await response.json();
+                        if (ticket !== latest) return;
+                        show(body.colors, typed !== '' && body.colors.length === 0);
+                    } catch (error) {
+                        if (ticket === latest) show([], false); // suggestions are optional; typing still works
+                    }
+                };
+
+                [name, color].forEach((field) => field.addEventListener('input', () => {
+                    clearTimeout(timer);
+                    timer = setTimeout(refresh, 200);
+                }));
+                refresh();
+            })();
+
             (() => {
                 const box = document.getElementById('price-suggestion');
                 const form = box.closest('form');
@@ -187,6 +278,16 @@
     <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
         <h2 class="mb-4 text-base font-semibold">Images</h2>
 
+        @if ($product->usesStockPhotos())
+            <p class="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900" data-stock-photo-warning>
+                This product uses stock photos. Upload real photos of this pair.
+            </p>
+        @endif
+
+        @if ($product->images->isEmpty())
+            @include('admin.products._existing-photos')
+        @endif
+
         @if ($product->images->isNotEmpty())
             <fieldset class="mb-5">
                 <legend class="mb-2 text-sm text-stone-600">Choose the primary image, or tick images to remove.</legend>
@@ -226,6 +327,7 @@
         <p class="mt-1 text-xs text-stone-500">
             JPG, PNG or WebP, up to 5 MB each, {{ ProductRequest::MAX_IMAGES }} images per product.
             @if ($product->images->isEmpty()) The first image becomes the primary one. @endif
+            @if ($product->usesStockPhotos()) New uploads replace the stock photos. @endif
         </p>
         @error('images')
             <p class="mt-1 text-sm text-red-600">{{ $message }}</p>

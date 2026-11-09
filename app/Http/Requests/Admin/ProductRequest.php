@@ -56,6 +56,7 @@ abstract class ProductRequest extends FormRequest
             'status' => ['required', Rule::enum(ProductStatus::class)],
             'images' => ['nullable', 'array', 'max:'.max(0, self::MAX_IMAGES - $this->keptImageCount())],
             'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:'.self::MAX_IMAGE_KB],
+            'use_existing_photos' => ['nullable', 'boolean'],
         ];
     }
 
@@ -113,6 +114,6 @@ abstract class ProductRequest extends FormRequest
      */
     public function productData(): array
     {
-        return $this->safe()->except(['images', 'primary_image_id', 'remove_images']);
+        return $this->safe()->except(['images', 'primary_image_id', 'remove_images', 'use_existing_photos']);
     }
 }

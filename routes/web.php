@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\PriceSuggestionController;
 use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\ProductLookupController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\ReservationController;
 use App\Http\Controllers\Admin\ReturnRequestController as AdminReturnRequestController;
@@ -135,6 +136,9 @@ Route::post('/logout', [LoginController::class, 'destroy'])->middleware('auth')-
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', DashboardController::class)->name('dashboard');
     Route::post('products/suggest-price', PriceSuggestionController::class)->name('products.suggest-price');
+    Route::get('products/name-suggestions', [ProductLookupController::class, 'names'])->name('products.name-suggestions');
+    Route::get('products/photo-suggestions', [ProductLookupController::class, 'photos'])->name('products.photo-suggestions');
+    Route::get('products/color-suggestions', [ProductLookupController::class, 'colors'])->name('products.color-suggestions');
     Route::resource('products', ProductController::class)->except('show');
     Route::resource('categories', CategoryController::class)->except('show');
     // Orders come from checkout and are never deleted, so admins can only view them and change status.

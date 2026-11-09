@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Console\Commands\AttachProductPhotos;
 use App\Enums\ProductCondition;
 use App\Enums\ProductStatus;
 use App\Http\Controllers\Controller;
@@ -10,6 +11,7 @@ use App\Http\Requests\Admin\UpdateProductRequest;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductImage;
+use App\Services\Products\StockPhotos;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
@@ -47,6 +49,7 @@ class ProductController extends Controller
         // UK size range, e.g. from the Restock page (size band S/M/L). Non-numbers are ignored.
         $sizeMin = is_numeric($request->query('size_min')) ? (float) $request->query('size_min') : null;
         $sizeMax = is_numeric($request->query('size_max')) ? (float) $request->query('size_max') : null;
+        $photos = in_array($request->query('photos'), ['stock', 'own'], true) ? $request->query('photos') : null;
 
         [$sort, $direction] = $this->sorting($request);
 
@@ -54,6 +57,9 @@ class ProductController extends Controller
         $query = Product::query()
             ->select('products.*')
             ->with(['category', 'primaryImage'])
+            ->withExists(['images as uses_stock_photos' => fn ($images) => $images->stock()])
+            ->when($photos === 'stock', fn ($query) => $query->usingStockPhotos())
+            ->when($photos === 'own', fn ($query) => $query->usingOwnPhotos())
             ->when($search !== '', fn ($query) => $query->where(fn ($query) => $query
                 ->where('products.name', 'like', '%'.$search.'%')
                 ->orWhere('products.brand', 'like', '%'.$search.'%')))
@@ -73,7 +79,7 @@ class ProductController extends Controller
             'brands' => $this->brands(),
             'statuses' => ProductStatus::cases(),
             'filters' => ['search' => $search, 'category' => $categoryId, 'brand' => $brand, 'status' => $status?->value,
-                'size_min' => $sizeMin, 'size_max' => $sizeMax],
+                'size_min' => $sizeMin, 'size_max' => $sizeMax, 'photos' => $photos],
             'sort' => $sort,
             'direction' => $direction,
         ]);
@@ -129,18 +135,23 @@ class ProductController extends Controller
         ]);
     }
 
-    public function store(StoreProductRequest $request): RedirectResponse
+    public function store(StoreProductRequest $request, StockPhotos $stockPhotos): RedirectResponse
     {
         $storedPaths = [];
+        $usedStock = null;
 
         try {
-            $product = DB::transaction(function () use ($request, &$storedPaths) {
+            $product = DB::transaction(function () use ($request, $stockPhotos, &$storedPaths, &$usedStock) {
                 $product = Product::create([
                     ...$request->productData(),
                     'slug' => Product::uniqueSlug($request->validated('name')),
                 ]);
 
-                $this->storeImages($product, $request->file('images', []), $storedPaths);
+                $uploads = $request->file('images', []);
+                $this->storeImages($product, $uploads, $storedPaths);
+                if ($uploads === [] && $request->boolean('use_existing_photos')) {
+                    $usedStock = $stockPhotos->attachTo($product);
+                }
                 $product->ensurePrimaryImage();
 
                 return $product;
@@ -152,7 +163,7 @@ class ProductController extends Controller
         }
 
         return redirect()->route('admin.products.edit', $product)
-            ->with('success', "Product \"{$product->name}\" was created.");
+            ->with('success', "Product \"{$product->name}\" was created.".$this->stockPhotoNote($usedStock));
     }
 
     public function edit(Product $product): View
@@ -163,7 +174,7 @@ class ProductController extends Controller
         ]);
     }
 
-    public function update(UpdateProductRequest $request, Product $product): RedirectResponse
+    public function update(UpdateProductRequest $request, Product $product, StockPhotos $stockPhotos): RedirectResponse
     {
         $product->fill($request->productData());
 
@@ -171,14 +182,24 @@ class ProductController extends Controller
             $product->slug = Product::uniqueSlug($product->name, $product->id);
         }
 
+        $uploads = $request->file('images', []);
         $removedImages = $product->images()->whereKey($request->validated('remove_images', []))->get();
+        if ($uploads !== []) {
+            // Real photos replace the stock and demo placeholders; earlier real uploads stay.
+            $removedImages = $removedImages->merge($product->images()->get()
+                ->filter(fn (ProductImage $image) => AttachProductPhotos::isAttached($image->image_path)));
+        }
         $storedPaths = [];
+        $usedStock = null;
 
         try {
-            DB::transaction(function () use ($request, $product, $removedImages, &$storedPaths) {
+            DB::transaction(function () use ($request, $product, $removedImages, $uploads, $stockPhotos, &$storedPaths, &$usedStock) {
                 $product->save();
                 $product->images()->whereKey($removedImages->modelKeys())->delete();
-                $this->storeImages($product, $request->file('images', []), $storedPaths);
+                $this->storeImages($product, $uploads, $storedPaths);
+                if ($uploads === [] && $request->boolean('use_existing_photos') && $product->images()->doesntExist()) {
+                    $usedStock = $stockPhotos->attachTo($product);
+                }
                 $product->ensurePrimaryImage($request->validated('primary_image_id'));
             });
         } catch (Throwable $e) {
@@ -191,7 +212,19 @@ class ProductController extends Controller
         ProductImage::deleteUnusedFiles($removedImages->pluck('image_path')->all());
 
         return redirect()->route('admin.products.edit', $product)
-            ->with('success', "Product \"{$product->name}\" was updated.");
+            ->with('success', "Product \"{$product->name}\" was updated.".$this->stockPhotoNote($usedStock));
+    }
+
+    /**
+     * @param  ?bool  $usedStock  null when "Use these photos" didn't apply to this save
+     */
+    private function stockPhotoNote(?bool $usedStock): string
+    {
+        return match ($usedStock) {
+            true => ' Using existing photos. Upload your own to replace them.',
+            false => ' No existing photos were found for it, so it has no photo yet.',
+            null => '',
+        };
     }
 
     public function destroy(Product $product): RedirectResponse

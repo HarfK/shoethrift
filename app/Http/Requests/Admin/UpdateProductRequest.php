@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Console\Commands\AttachProductPhotos;
 use App\Models\Product;
 use Illuminate\Validation\Rule;
 
@@ -25,9 +26,12 @@ class UpdateProductRequest extends ProductRequest
 
     protected function keptImageCount(): int
     {
-        return $this->product()->images()
+        $kept = $this->product()->images()
             ->whereKeyNot(array_filter((array) $this->input('remove_images', []), 'is_numeric'))
-            ->count();
+            ->pluck('image_path');
+
+        // Uploads replace placeholder photos, so those don't use up the limit.
+        return ($this->hasFile('images') ? $kept->reject(fn (string $path) => AttachProductPhotos::isAttached($path)) : $kept)->count();
     }
 
     private function product(): Product
