@@ -26,28 +26,28 @@
     "raya_closure"
   ],
   "event_multipliers_applied": {
-    "11.11": 2.024,
-    "12.12": 1.224,
+    "11.11": 2.025,
+    "12.12": 1.225,
     "black_friday": 0.794,
     "raya_closure": 0.815,
     "pre_raya": 1.092
   },
   "event_multipliers_estimated_all": {
-    "9.9": 1.49,
+    "9.9": 1.491,
     "10.10": 1.426,
-    "11.11": 2.024,
-    "12.12": 1.224,
+    "11.11": 2.025,
+    "12.12": 1.225,
     "black_friday": 0.794,
     "raya_closure": 0.815,
     "pre_raya": 1.092,
     "chinese_new_year": 1.173,
-    "payday": 1.08
+    "payday": 1.098
   },
   "interval": "calibrated 80% interval: 10th/90th percentile of inner-fold errors (last 182 days)",
   "interval_offsets": {
-    "daily_low": -625.422,
+    "daily_low": -612.885,
     "daily_high": 1097.93,
-    "weekly_low": 0.735,
+    "weekly_low": 0.768,
     "weekly_high": 1.772
   },
   "target": "daily net revenue (RM): paid orders (status paid/shipped/completed/refunded), dated by paid_at in Malaysia time (UTC+8), total - refunded_amount",
@@ -80,13 +80,13 @@
   "selection": "business decision: XGBoost (lowest mean MAE of the base models over two rolling-origin test windows) with the event uplift applied only to major campaign events (11.11, 12.12, Black Friday, pre-Raya, Raya closure), so the admin sees the big sales days. The event list was fixed from the shop calendar, not tuned on the test windows. Plain XGBoost had the lowest mean MAE.",
   "plain_xgboost_metrics": {
     "A": {
-      "MAE (RM)": 587.16,
-      "RMSE (RM)": 737.48,
-      "WAPE (%)": 57.8,
-      "weekly total error (%)": 27.33,
-      "weekly total bias (%)": -3.71,
-      "80% interval coverage (%)": 75.82,
-      "model's own interval coverage (%)": 64.84
+      "MAE (RM)": 572.96,
+      "RMSE (RM)": 729.09,
+      "WAPE (%)": 54.59,
+      "weekly total error (%)": 24.96,
+      "weekly total bias (%)": -8.95,
+      "80% interval coverage (%)": 79.12,
+      "model's own interval coverage (%)": 67.03
     },
     "B": {
       "MAE (RM)": 488.91,
@@ -104,13 +104,13 @@
       "from": "2026-08-09",
       "until": "2026-11-07",
       "metrics": {
-        "MAE (RM)": 587.16,
-        "RMSE (RM)": 737.48,
-        "WAPE (%)": 57.8,
-        "weekly total error (%)": 27.33,
-        "weekly total bias (%)": -3.71,
-        "80% interval coverage (%)": 74.73,
-        "model's own interval coverage (%)": 64.84
+        "MAE (RM)": 572.96,
+        "RMSE (RM)": 729.09,
+        "WAPE (%)": 54.59,
+        "weekly total error (%)": 24.96,
+        "weekly total bias (%)": -8.95,
+        "80% interval coverage (%)": 78.02,
+        "model's own interval coverage (%)": 67.03
       }
     },
     "B": {
@@ -129,7 +129,9 @@
     }
   },
   "comparison_file": "reports/revenue_model_comparison.csv (v1: reports/revenue_model_comparison_v1.csv)",
-  "created_at": "2026-11-08T07:21:10+00:00",
+  "created_at": "2026-11-09T00:34:20+00:00",
+  "evaluated_at": "2026-11-09T00:33:51+00:00",
+  "evaluated_on_data_until": "2026-11-07",
   "versions": {
     "pandas": "3.1.1",
     "numpy": "2.5.4",
@@ -140,6 +142,6 @@
     "joblib": "1.6.0"
   },
   "load": "sys.path.insert(0, 'ml-service'); model = joblib.load('ml-service/models/revenue_model.joblib'); model.predict(dates); model.weekly_range(total)",
-  "retrained_at": "2026-11-08T09:32:18+00:00",
+  "retrained_at": "2026-11-09T00:47:11+00:00",
   "retrained_by": "retrain.py (evaluation figures are from the notebook backtest)"
 }

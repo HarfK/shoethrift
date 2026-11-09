@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Services\Ml\ForecastAccuracy;
 use App\Services\Ml\MlService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -34,11 +35,12 @@ class InsightsController extends Controller
     /** Markdown suggested for overstocked groups (the shop's usual first markdown). */
     public const OVERSTOCK_MARKDOWN_PERCENT = 15;
 
-    public function forecast(Request $request, MlService $ml): View
+    public function forecast(Request $request, MlService $ml, ForecastAccuracy $accuracy): View
     {
         $days = $request->integer('days') === 30 ? 30 : 7;
         $result = $ml->forecast(30);
-        $data = ['days' => $days, 'result' => $result];
+        // From the database, so it still shows when the ML API is offline.
+        $data = ['days' => $days, 'result' => $result, 'accuracy' => $accuracy->report()];
 
         if ($result->ok()) {
             $actual = $result->get('last_30_days_actual', []);

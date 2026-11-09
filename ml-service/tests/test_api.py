@@ -34,6 +34,7 @@ def test_health_ok(client):
         assert body["models"][key]["available"] is True
         assert body["models"][key]["trained_until"]
         assert body["models"][key]["key_metric"]["value"] is not None
+        assert body["models"][key]["key_metric"]["calculated_at"]
 
 
 def test_forecast_days_and_bounds(client):

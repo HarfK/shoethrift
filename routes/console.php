@@ -18,5 +18,8 @@ Schedule::command('loyalty:expire')->dailyAt('00:30')->timezone(config('app.disp
 // Retrain the ML models (ml-service API, POST /admin/retrain) every Sunday at 03:00 Malaysia time.
 Schedule::command('ml:retrain')->weeklyOn(0, '03:00')->timezone(config('app.display_timezone', 'Asia/Kuala_Lumpur'));
 
+// Save the day's revenue forecast for "Forecast vs actual". Hourly, but only the first success of each day is kept.
+Schedule::command('ml:save-forecast')->hourly()->withoutOverlapping();
+
 // Cart holds that ran out (also released lazily on shop requests; see App\Services\Cart\Reservations).
 Schedule::command('cart:release-expired')->everyMinute()->withoutOverlapping();

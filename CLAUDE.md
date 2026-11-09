@@ -281,7 +281,7 @@ The tables are users → orders → order_items ← products → product_images,
   - Forecast and restock report are cached in memory for 1 hour (cleared by a retrain or a restart).
   - Errors are JSON `{error, details}`: 422 for bad input (readable messages), 503 when a model file is missing or the database is down.
 - **Retrain without the API:** `ml-service\venv\Scripts\python ml-service\retrain.py` refits all 3 models from the current database with the notebooks' final settings (about 45 s), writes files atomically and keeps the notebooks' evaluation figures in the metadata. Restart the API afterwards.
-- **Tests:** `ml-service\venv\Scripts\python -m pytest ml-service\tests -v` (15 tests, TestClient). They use the saved models and the real MySQL database.
+- **Tests:** `ml-service\venv\Scripts\python -m pytest ml-service\tests -v` (TestClient). They use the saved models and the real MySQL database.
 
 ### ML admin pages (Laravel side)
 - **Client:** `App\Services\Ml\MlService`, configured in `config/services.php` `ml` (`ML_API_URL`, `ML_API_KEY`, `ML_API_TIMEOUT` 5 s, connect 2 s, retrain 30 s).
@@ -289,6 +289,18 @@ The tables are users → orders → order_items ← products → product_images,
   - If the URL or key is empty it doesn't call at all and reports "not configured". `phpunit.xml` sets both empty, so tests must set `config('services.ml.*')` and use `Http::fake()` (see `MlInsightsTest`).
 - **Admin sidebar "Insights"** (admin middleware, `InsightsController`):
   - **Revenue forecast** (`admin.insights.forecast`, `?days=7|30`): `<x-admin.forecast-chart>`, a server-rendered SVG with actual + forecast lines, a shaded 80% band and red event labels (11.11 …). Cards compare the next 7 days with the last 7 complete days; the table lists each day; "Model trained until".
+  - **Forecast vs actual** (bottom of the Revenue forecast page, from the database, so it shows when the API is offline): `App\Services\Ml\ForecastAccuracy` compares `revenue_forecasts` (`RevenueForecast`) with `SalesReport` actuals for the last 14 complete Malaysian days: difference in RM and % (actual − forecast, % of actual), MAE and WAPE.
+    - **Saving:** `ml:save-forecast` (hourly in `routes/console.php`; needs the scheduler and the ML API) stores the next 7 days, unique per `forecast_date` + `made_on`; the first save of a day is kept.
+    - **Which forecast is used:** a saved one beats a backfilled one, then the most recent made before that day.
+    - **Backfill:** `ml:backfill-forecasts` runs `ml-service/backfill_forecasts.py` (no API needed, about 25 s): 7-day blocks, each refitted only on sales before the block. Rows have `is_backfill`, get a "Backfilled" badge and have their own MAE/WAPE, never mixed into the saved figures. Days with a forecast are left alone; `--replace` re-creates backfilled days (saved forecasts are never touched).
+    - **Dev data caveat:** the seeded history stops on 7 Nov 2026, so 8 Nov shows RM 0 and makes the backfilled error look a little worse than it is.
+    - A retrain does **not** change the reported test figures: `retrain.py` carries them over from notebook 03. To recalculate, run the notebook (`jupyter nbconvert --to notebook --execute --inplace` with kernel `thriftstore-ml`, from `ml-service/notebooks`), update its hard-coded "Finding" text, then reload the API.
+    - **Calculated dates:** notebooks 03, 04 and 05 store `evaluated_at` and `evaluated_on_data_until` in their model JSON and an `evaluated_on` column in their `reports/*_model_comparison.csv`. `/health` returns `key_metric.calculated_at` (`evaluated_at`, else `created_at`) and the ML status page shows it as "Test figure calculated …".
+    - **Current test figures** (calculated 9 Nov 2026, on sales up to 7 Nov):
+      - revenue: window A MAE RM 572.96, WAPE 54.59%; window B MAE RM 489.61, WAPE 57.52%. `revenue_model_comparison_v1.csv` predates the 9-order correction, so window A in v1 vs v2 isn't like-for-like;
+      - restock: sell-out F1 0.612, MAE 0.740 units;
+      - price: MAE RM 28.73, R² 0.912.
+    - Moving seeded orders between `delivered` and `completed` affects only revenue: restock counts every order that isn't cancelled or failed, and price already counts both statuses.
   - **Restock** (`admin.insights.restock`, `?risk=HIGH|MEDIUM|LOW|OVERSTOCK`, filtered in PHP):
     - risk cards and total pairs to restock;
     - the group table, with sizes to look for and the demand source ("In-stock rate" has a tooltip);
@@ -343,7 +355,7 @@ The tables are users → orders → order_items ← products → product_images,
 - **Commands:**
   - `loyalty:expire` is scheduled daily at 00:30 Malaysia time.
   - `loyalty:backfill` gives points for existing Completed orders, dated by completion (COD: `paid_at`; online: `delivered_at`), with expiry and partial refunds in date order. It is idempotent.
-  - On the dev DB: 2,177 orders, 351,345 points outstanding; `customer@thriftstore.test` has 4,370 points.
+  - On the dev DB (9 Nov 2026): 2,186 orders, 354,090 points outstanding.
 - **No notifications** are sent for points.
 - **Tests:** `tests/Feature/Loyalty/PointsTest.php`.
 

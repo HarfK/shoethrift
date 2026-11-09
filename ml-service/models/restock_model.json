@@ -149,7 +149,9 @@
     "in_stock_window_days": 180,
     "min_in_stock_days": 14
   },
-  "created_at": "2026-11-08T08:07:06+00:00",
+  "created_at": "2026-11-09T00:45:11+00:00",
+  "evaluated_at": "2026-11-09T00:45:03+00:00",
+  "evaluated_on_data_until": "2026-11-07",
   "versions": {
     "pandas": "3.1.1",
     "numpy": "2.5.4",
@@ -158,6 +160,6 @@
     "joblib": "1.6.0"
   },
   "load": "sys.path.insert(0, 'ml-service'); from restock.report import build_restock_report; build_restock_report('2026-11-08')",
-  "retrained_at": "2026-11-08T09:32:29+00:00",
+  "retrained_at": "2026-11-09T00:47:21+00:00",
   "retrained_by": "retrain.py (evaluation figures are from the notebook backtest)"
 }

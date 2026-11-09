@@ -523,6 +523,8 @@ for t in range(N_DAYS):
                 if o["status"] == "completed" and rng.random() < 0.015:
                     o["status"] = "refunded"
                     o["refunded_amount"] = subtotal
+                if method == "online" and o["status"] == "delivered":
+                    o["status"] = "completed"  # Delivered is a COD-only step. Set after the draws above, so the data stays the same.
                 o["updated_at"] = ts(deliver + timedelta(days=int(rng.integers(0, 4))))
             for pi in chosen:
                 products[pi]["status"] = "sold"

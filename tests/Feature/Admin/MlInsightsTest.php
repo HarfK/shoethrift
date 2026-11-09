@@ -90,11 +90,11 @@ class MlInsightsTest extends TestCase
 
     private function healthJson(): array
     {
-        $model = fn (string $name, string $metric, float $value) => ['available' => true, 'file' => 'x.joblib', 'error' => null, 'name' => $name,
-            'trained_until' => '2026-11-07', 'key_metric' => ['name' => $metric, 'value' => $value]];
+        $model = fn (string $name, string $metric, float $value, ?string $calculated = null) => ['available' => true, 'file' => 'x.joblib', 'error' => null, 'name' => $name,
+            'trained_until' => '2026-11-07', 'key_metric' => ['name' => $metric, 'value' => $value, 'calculated_at' => $calculated]];
 
         return ['status' => 'ok', 'today_malaysia' => '2026-11-08', 'models' => [
-            'revenue' => $model('XGBoost + major-event uplift', 'MAE per day, test window A (RM)', 587.16),
+            'revenue' => $model('XGBoost + major-event uplift', 'MAE per day, test window A (RM)', 587.16, '2026-11-08T16:30:00+00:00'), // 9 Nov in Malaysia
             'restock' => $model('Random forest', 'sell-out F1 (13-week backtest)', 0.6124),
             'price' => $model('Random forest (ratio)', 'MAE on later sales (RM)', 28.726),
         ], 'cache' => [['key' => 'forecast/2026-11-08', 'age_seconds' => 120, 'expires_in_seconds' => 3480]],
@@ -324,6 +324,16 @@ class MlInsightsTest extends TestCase
             ->assertRedirect(route('admin.insights.status'))
             ->assertSessionHas('success', fn ($m) => str_contains($m, 'Retraining started'));
         Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/admin/retrain'));
+    }
+
+    public function test_status_page_labels_each_test_figure_with_its_calculation_date(): void
+    {
+        $this->fakeApi();
+
+        $this->actingAs($this->admin)->get(route('admin.insights.status'))
+            ->assertSeeText('Test figure calculated 9 Nov 2026')
+            ->assertSeeText('Calculation date not available')
+            ->assertSeeText('recalculate the test figures');
     }
 
     public function test_retrain_already_running_shows_an_error(): void

@@ -189,8 +189,12 @@ def health():
     models = {}
     for key, stem in MODEL_FILES.items():
         meta = state.meta.get(key, {})
+        metric = _key_metric(key, meta)
+        if metric:
+            # When the test figure was calculated (by its notebook). A retrain doesn't recalculate it.
+            metric["calculated_at"] = meta.get("evaluated_at") or meta.get("created_at")
         models[key] = {"available": key in state.models, "file": f"{stem}.joblib", "error": state.missing.get(key),
-                       "name": meta.get("model_name"), "trained_until": meta.get("trained_until"), "key_metric": _key_metric(key, meta)}
+                       "name": meta.get("model_name"), "trained_until": meta.get("trained_until"), "key_metric": metric}
     now = time.time()
     cache = [{"key": "/".join(str(k) for k in key), "age_seconds": round(now - ts), "expires_in_seconds": max(0, round(CACHE_SECONDS - (now - ts)))}
              for key, (ts, _) in state.cache.items()]

@@ -40,7 +40,14 @@
                             <div><dt class="text-stone-500">Model</dt><dd class="font-medium">{{ $model['name'] }}</dd></div>
                             <div><dt class="text-stone-500">Trained until</dt><dd>{{ InsightsController::day($model['trained_until']) }}</dd></div>
                             @if ($model['key_metric'])
-                                <div><dt class="text-stone-500">{{ ucfirst($model['key_metric']['name']) }}</dt><dd class="text-lg font-semibold tabular-nums">{{ is_numeric($model['key_metric']['value']) && $model['key_metric']['value'] < 1 ? number_format($model['key_metric']['value'], 3) : number_format((float) $model['key_metric']['value'], 2) }}</dd></div>
+                                <div><dt class="text-stone-500">{{ ucfirst($model['key_metric']['name']) }}</dt><dd class="text-lg font-semibold tabular-nums">{{ is_numeric($model['key_metric']['value']) && $model['key_metric']['value'] < 1 ? number_format($model['key_metric']['value'], 3) : number_format((float) $model['key_metric']['value'], 2) }}</dd>
+                                    <dd class="text-xs text-stone-500" data-metric-date>
+                                        @if (! empty($model['key_metric']['calculated_at']))
+                                            Test figure calculated {{ \Illuminate\Support\Carbon::parse($model['key_metric']['calculated_at'])->shopDate() }}
+                                        @else
+                                            Calculation date not available
+                                        @endif
+                                    </dd></div>
                             @endif
                         </dl>
                     @else
@@ -53,7 +60,7 @@
         <div class="mt-6 grid gap-6 lg:grid-cols-2">
             <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
                 <h2 class="text-base font-semibold">Retrain</h2>
-                <p class="mt-1 text-sm text-stone-600">Refits all three models on the latest sales (about 1 minute, in the background). It also runs automatically every Sunday at 3:00 am.</p>
+                <p class="mt-1 text-sm text-stone-600">Refits all three models on the latest sales (about 1 minute, in the background). It also runs automatically every Sunday at 3:00 am. A retrain doesn't recalculate the test figures above; those come from the notebooks, on the date shown.</p>
                 <p class="mt-3 text-sm" data-retrain-status>
                     Last retrain: <span class="font-medium">{{ $retrain['status'] ?? 'idle' }}</span>
                     @if (! empty($retrain['finished_at']))
