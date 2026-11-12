@@ -15,6 +15,7 @@ use App\Models\UserInteraction;
 use App\Services\Recommendations\PersonalScore;
 use App\Services\Recommendations\Recommender;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Tests\TestCase;
@@ -25,7 +26,8 @@ use Tests\TestCase;
  * shoe preferences form.
  *
  * The viewed pair is a Like-new Nike sneaker, UK 8, RM 300. Candidates start with nothing in
- * common with it (UK 12, Boots, Vans, RM 1000, Fair) and change only what a test is about.
+ * common with it (UK 12, Boots, Vans, RM 1000, Fair, a unique name) and change only what a test is about.
+ * History needs at least 3 interactions in the last 12 months, so most history tests use 3.
  */
 class PersonalRecommendationTest extends TestCase
 {
@@ -38,6 +40,8 @@ class PersonalRecommendationTest extends TestCase
     private Category $sneakers;
 
     private Category $boots;
+
+    private int $candidates = 0;
 
     protected function setUp(): void
     {
@@ -58,15 +62,20 @@ class PersonalRecommendationTest extends TestCase
     private function candidate(array $attributes = []): Product
     {
         return Product::factory()->create([
+            'name' => 'Candidate '.++$this->candidates, 'color' => 'Black',
             'brand' => 'Vans', 'size' => 12, 'category_id' => $this->boots->id, 'price' => 1000,
             'condition' => ProductCondition::Fair, 'stock' => 1, 'status' => ProductStatus::Available,
             ...$attributes,
         ]);
     }
 
-    private function interact(Product $product, string $type, ?User $user = null): void
+    private function interact(Product $product, string $type, ?User $user = null, ?Carbon $at = null): void
     {
-        UserInteraction::create(['user_id' => ($user ?? $this->user)->id, 'product_id' => $product->id, 'type' => $type]);
+        $interaction = new UserInteraction(['user_id' => ($user ?? $this->user)->id, 'product_id' => $product->id, 'type' => $type]);
+        if ($at) {
+            $interaction->created_at = $at;
+        }
+        $interaction->save();
     }
 
     /**
@@ -88,11 +97,29 @@ class PersonalRecommendationTest extends TestCase
     }
 
     /**
+     * @return list<string>
+     */
+    private function personalReasons(Product $product): array
+    {
+        $service = app(PersonalScore::class);
+        $profile = $service->profileFor($this->user->fresh());
+
+        return $service->reasons($profile, $product->load('category'), $service->score($profile, $product)['parts']);
+    }
+
+    /**
      * @return list<int>
      */
     private function recommendedIds(?User $user): array
     {
         return app(Recommender::class)->forProduct($this->viewed, $user)->pluck('id')->all();
+    }
+
+    private function holdInCart(Product $product, User $user, bool $active = true): void
+    {
+        Cart::firstOrCreate(['user_id' => $user->id])->items()->create([
+            'product_id' => $product->id, 'quantity' => 1, 'reserved_until' => $active ? now()->addMinutes(10) : now()->subMinute(),
+        ]);
     }
 
     // --- Personal score: each part ----------------------------------------------
@@ -105,38 +132,43 @@ class PersonalRecommendationTest extends TestCase
         $this->assertSame(['size' => 0.0, 'brand' => 0.0, 'category' => 0.0, 'budget' => 0.0], $this->personal($this->candidate())['parts']);
     }
 
-    public function test_size_40_for_the_saved_size(): void
+    public function test_size_40_for_the_saved_size_and_20_half_a_size_away(): void
     {
         $this->prefer(['shoe_size' => 8.5]);
 
         $this->assertSame(40.0, $this->personal($this->candidate(['size' => 8.5]))['parts']['size']);
-        $this->assertSame(0.0, $this->personal($this->candidate(['size' => 9]))['parts']['size']);
+        $this->assertSame(20.0, $this->personal($this->candidate(['size' => 9]))['parts']['size']);
+        $this->assertSame(20.0, $this->personal($this->candidate(['size' => 8]))['parts']['size']);
+        $this->assertSame(0.0, $this->personal($this->candidate(['size' => 9.5]))['parts']['size']);
     }
 
-    public function test_without_a_saved_size_the_most_frequent_interacted_size_is_used(): void
+    public function test_without_a_saved_size_the_size_with_the_most_weight_is_used(): void
     {
-        // Two views of UK 9 beat one purchase of UK 10: the count decides, not the weight.
+        // One purchase of UK 10 (5) outweighs two views of UK 9 (2).
         $this->interact($this->candidate(['size' => 9]), 'view');
         $this->interact($this->candidate(['size' => 9]), 'view');
         $this->interact($this->candidate(['size' => 10]), 'purchase');
 
-        $this->assertSame(40.0, $this->personal($this->candidate(['size' => 9]))['parts']['size']);
-        $this->assertSame(0.0, $this->personal($this->candidate(['size' => 10]))['parts']['size']);
+        $this->assertSame(40.0, $this->personal($this->candidate(['size' => 10]))['parts']['size']);
+        $this->assertSame(0.0, $this->personal($this->candidate(['size' => 11]))['parts']['size']);
 
         // A saved size wins over history.
-        $this->prefer(['shoe_size' => 10]);
-        $this->assertSame(40.0, $this->personal($this->candidate(['size' => 10]))['parts']['size']);
+        $this->prefer(['shoe_size' => 12]);
+        $this->assertSame(40.0, $this->personal($this->candidate(['size' => 12]))['parts']['size']);
     }
 
-    public function test_equal_counts_go_to_the_higher_weight_then_the_smaller_size(): void
+    public function test_equal_weights_go_to_more_interactions_then_the_smaller_size(): void
     {
-        $this->interact($this->candidate(['size' => 9]), 'view');
-        $this->interact($this->candidate(['size' => 10]), 'cart');
-        $this->assertSame(40.0, $this->personal($this->candidate(['size' => 10]))['parts']['size']);
+        $this->interact($this->candidate(['size' => 9]), 'cart');   // 3 in one
+        foreach (range(1, 3) as $i) {
+            $this->interact($this->candidate(['size' => 11]), 'view'); // 3 in three
+        }
+        $this->assertSame(40.0, $this->personal($this->candidate(['size' => 11]))['parts']['size']);
 
         UserInteraction::query()->delete();
-        $this->interact($this->candidate(['size' => 9.5]), 'view');
-        $this->interact($this->candidate(['size' => 7.5]), 'view');
+        foreach ([9.5, 9.5, 7.5, 7.5] as $size) {
+            $this->interact($this->candidate(['size' => $size]), 'view');
+        }
         $this->assertSame(40.0, $this->personal($this->candidate(['size' => 7.5]))['parts']['size'], 'Half sizes are kept apart.');
     }
 
@@ -155,6 +187,7 @@ class PersonalRecommendationTest extends TestCase
     {
         $this->interact($this->candidate(['brand' => 'Nike']), 'purchase');
         $this->interact($this->candidate(['brand' => 'Puma']), 'view');
+        $this->interact($this->candidate(['brand' => 'Asics']), 'view');
         $this->prefer(['preferred_brands' => ['Puma']]);
 
         $this->assertSame(20.0, $this->personal($this->candidate(['brand' => 'puma']))['parts']['brand']);
@@ -164,10 +197,11 @@ class PersonalRecommendationTest extends TestCase
     public function test_category_uses_the_same_weighted_affinity(): void
     {
         $this->interact($this->candidate(['category_id' => $this->sneakers->id]), 'view'); // 1
-        $this->interact($this->candidate(['category_id' => $this->boots->id]), 'cart');    // 3 (highest)
+        $this->interact($this->candidate(['category_id' => $this->boots->id]), 'cart');    // 3
+        $this->interact($this->candidate(['category_id' => $this->boots->id]), 'view');    // boots 4 (highest)
 
         $this->assertSame(20.0, $this->personal($this->candidate(['category_id' => $this->boots->id]))['parts']['category']);
-        $this->assertSame(6.67, $this->personal($this->candidate(['category_id' => $this->sneakers->id]))['parts']['category']);
+        $this->assertSame(5.0, $this->personal($this->candidate(['category_id' => $this->sneakers->id]))['parts']['category']);
     }
 
     public function test_budget_20_inside_the_saved_budget(): void
@@ -187,23 +221,136 @@ class PersonalRecommendationTest extends TestCase
         $this->assertSame(0.0, $this->personal($this->candidate(['price' => 151]))['parts']['budget']);
     }
 
-    public function test_without_a_saved_budget_the_average_interacted_price_plus_minus_30_percent_is_used(): void
+    public function test_without_a_saved_budget_the_weighted_average_price_plus_minus_30_percent_is_used(): void
     {
         $this->interact($this->candidate(['price' => 100]), 'view');
-        $this->interact($this->candidate(['price' => 300]), 'purchase'); // average RM 200 → RM 140 to 260
+        $this->interact($this->candidate(['price' => 200]), 'view');
+        $this->interact($this->candidate(['price' => 300]), 'view'); // average RM 200 → RM 140 to 260
 
         foreach ([[140, 20.0], [260, 20.0], [139.99, 0.0], [260.01, 0.0]] as [$price, $points]) {
             $this->assertSame($points, $this->personal($this->candidate(['price' => $price]))['parts']['budget'], "RM {$price}");
         }
+
+        // A purchase weighs 5 views: (100 + 200 + 5 x 300) / 7 = 257.14 → RM 180 to 334.29.
+        UserInteraction::query()->where('type', 'view')->whereIn('product_id', Product::where('price', 300)->pluck('id'))->update(['type' => 'purchase']);
+        $this->assertSame(20.0, $this->personal($this->candidate(['price' => 334]))['parts']['budget']);
+        $this->assertSame(0.0, $this->personal($this->candidate(['price' => 179]))['parts']['budget']);
     }
 
     public function test_all_parts_add_up_to_100(): void
     {
         $this->prefer(['shoe_size' => 9, 'preferred_brands' => ['Adidas'], 'min_price' => 100, 'max_price' => 300]);
-        $this->interact($this->candidate(['category_id' => $this->sneakers->id]), 'view');
+        foreach (range(1, 3) as $i) {
+            $this->interact($this->candidate(['category_id' => $this->sneakers->id]), 'view');
+        }
 
         $result = $this->personal($this->candidate(['size' => 9, 'brand' => 'Adidas', 'category_id' => $this->sneakers->id, 'price' => 200]));
         $this->assertSame(100.0, $result['score']);
+    }
+
+    // --- Recency and minimum evidence ----------------------------------------------
+
+    public function test_interactions_halve_in_weight_every_180_days(): void
+    {
+        $service = app(PersonalScore::class);
+        $now = Carbon::parse('2026-11-12 12:00');
+
+        $this->assertSame(5.0, $service->weight('purchase', $now, $now));
+        $this->assertSame(2.5, $service->weight('purchase', $now->copy()->subDays(180), $now));
+        $this->assertSame(0.75, $service->weight('cart', $now->copy()->subDays(360), $now));
+
+        // Nike viewed today (1) against two Adidas views from 360 days ago (2 x 0.25 = 0.5).
+        $this->interact($this->candidate(['brand' => 'Nike']), 'view');
+        $this->interact($this->candidate(['brand' => 'Adidas']), 'view', at: now()->subDays(360));
+        $this->interact($this->candidate(['brand' => 'Adidas']), 'view', at: now()->subDays(360));
+
+        $this->assertSame(20.0, $this->personal($this->candidate(['brand' => 'Nike']))['parts']['brand']);
+        $this->assertSame(10.0, $this->personal($this->candidate(['brand' => 'Adidas']))['parts']['brand']);
+    }
+
+    public function test_history_needs_3_interactions_in_the_last_12_months(): void
+    {
+        $nike = $this->candidate(['brand' => 'Nike', 'size' => 10]);
+        $this->interact($nike, 'purchase');
+        $this->interact($nike, 'cart');
+        foreach (range(1, 5) as $i) {
+            $this->interact($nike, 'purchase', at: now()->subMonths(13)); // too old to count
+        }
+
+        $profile = app(PersonalScore::class)->profileFor($this->user);
+        $this->assertFalse($profile->hasData);
+        $this->assertNull($profile->size);
+        $this->assertSame(0.0, $this->personal($this->candidate(['brand' => 'Nike', 'size' => 10]))['score']);
+        $this->actingAs($this->user)->get(route('home'))->assertSee('Set your shoe size, brands and budget');
+
+        // A third recent interaction is enough.
+        $this->interact($nike, 'view');
+        $this->assertTrue(app(PersonalScore::class)->profileFor($this->user)->hasData);
+        $this->assertSame(10.0, app(PersonalScore::class)->profileFor($this->user)->size);
+    }
+
+    public function test_saved_preferences_count_even_without_history_but_nothing_is_inferred(): void
+    {
+        $this->interact($this->candidate(['brand' => 'Nike']), 'purchase');
+        $this->prefer(['max_price' => 500]);
+
+        $profile = app(PersonalScore::class)->profileFor($this->user);
+        $this->assertTrue($profile->hasData);
+        $this->assertSame([], $profile->brandAffinity);
+        $this->assertNull($profile->size);
+    }
+
+    // --- Reason labels -------------------------------------------------------------
+
+    public function test_personal_labels_name_the_size_brand_category_and_budget(): void
+    {
+        $this->prefer(['shoe_size' => 11, 'min_price' => 143.44, 'max_price' => 266.38]);
+        foreach (range(1, 3) as $i) {
+            $this->interact($this->candidate(['brand' => 'Nike', 'category_id' => $this->sneakers->id]), 'view');
+        }
+
+        $this->assertSame(
+            ['In your size (UK 11)', 'Brand you like: Nike', 'Category you browse: Sneakers', 'Within your budget (RM143–266)'],
+            $this->personalReasons($this->candidate(['size' => 11, 'brand' => 'Nike', 'category_id' => $this->sneakers->id, 'price' => 200])),
+        );
+        $this->assertSame(['Close to your size (UK 11)'], $this->personalReasons($this->candidate(['size' => 10.5])));
+    }
+
+    public function test_budget_labels_with_one_open_end(): void
+    {
+        $this->assertSame('from RM100', PersonalScore::budgetLabel([100.0, null]));
+        $this->assertSame('up to RM1,200', PersonalScore::budgetLabel([null, 1200.0]));
+    }
+
+    public function test_history_brands_and_categories_are_named_only_with_2_interactions_and_30_percent(): void
+    {
+        foreach (range(1, 4) as $i) {
+            $this->interact($this->candidate(['brand' => 'Nike', 'category_id' => $this->sneakers->id]), 'view'); // Nike 4, Sneakers 4
+        }
+        $this->interact($this->candidate(['brand' => 'Puma']), 'cart');  // Puma 3 (75%) but 1 interaction
+        $this->interact($this->candidate(['brand' => 'Asics']), 'view'); // Asics 2 (50%), 2 interactions
+        $this->interact($this->candidate(['brand' => 'Asics']), 'view');
+        $this->interact($this->candidate(['brand' => 'Vans', 'category_id' => $this->boots->id]), 'view');
+
+        $this->assertContains('Brand you like: Nike', $this->personalReasons($this->candidate(['brand' => 'Nike'])));
+        $this->assertContains('Brand you like: Asics', $this->personalReasons($this->candidate(['brand' => 'Asics'])));
+        $this->assertNotContains('Brand you like: Puma', $this->personalReasons($this->candidate(['brand' => 'Puma'])), 'Only 1 interaction.');
+        $this->assertGreaterThan(0, $this->personal($this->candidate(['brand' => 'Puma']))['parts']['brand'], 'It still scores.');
+        $this->assertContains('Category you browse: Sneakers', $this->personalReasons($this->candidate(['category_id' => $this->sneakers->id])));
+    }
+
+    public function test_a_brand_below_30_percent_is_not_named_but_a_saved_brand_always_is(): void
+    {
+        foreach (range(1, 4) as $i) {
+            $this->interact($this->candidate(['brand' => 'Nike']), 'purchase'); // 20
+        }
+        $this->interact($this->candidate(['brand' => 'Fila']), 'view'); // 2 of 20 = 10%
+        $this->interact($this->candidate(['brand' => 'Fila']), 'view');
+
+        $this->assertNotContains('Brand you like: Fila', $this->personalReasons($this->candidate(['brand' => 'Fila'])));
+
+        $this->prefer(['preferred_brands' => ['Fila']]);
+        $this->assertContains('Brand you like: Fila', $this->personalReasons($this->candidate(['brand' => 'Fila'])));
     }
 
     // --- Only the customer's own data -------------------------------------------
@@ -212,7 +359,9 @@ class PersonalRecommendationTest extends TestCase
     {
         $other = User::factory()->create();
         $this->prefer(['shoe_size' => 12, 'preferred_brands' => ['Vans']], $other);
-        $this->interact($this->candidate(['brand' => 'Vans']), 'purchase', $other);
+        foreach (range(1, 3) as $i) {
+            $this->interact($this->candidate(['brand' => 'Vans']), 'purchase', $other);
+        }
 
         $profile = app(PersonalScore::class)->profileFor($this->user);
         $this->assertFalse($profile->hasData);
@@ -230,6 +379,7 @@ class PersonalRecommendationTest extends TestCase
         $this->assertSame([$match->id], $recommendations->pluck('id')->all());
         $this->assertSame(55.56, $recommendations->first()->recommendation_score);
         $this->assertNull($recommendations->first()->personal_score);
+        $this->assertSame(['Same size as this pair (UK 8)', 'Same category as this pair: Sneakers'], $recommendations->first()->recommendation_reasons);
         $this->assertSame($this->recommendedIds(null), $this->recommendedIds($this->user));
     }
 
@@ -254,25 +404,78 @@ class PersonalRecommendationTest extends TestCase
         $this->assertCount(Recommender::LIMIT, app(Recommender::class)->forProduct($this->viewed, null));
     }
 
-    public function test_final_score_is_60_percent_similarity_plus_40_percent_personal(): void
+    public function test_the_size_rule_uses_the_customers_size_and_guests_keep_the_viewed_pairs(): void
     {
         $this->prefer(['shoe_size' => 12]);
-        // Same category and brand (44.44) and the user's size (personal 40): 0.6 x 44.44 + 0.4 x 40 = 42.66.
+        // The user's size + same category and brand: similarity 7/9 = 77.78, personal 40 → 0.6 x 77.78 + 0.4 x 40 = 62.67.
         $forUser = $this->candidate(['name' => 'Nike Boot UK 12', 'brand' => 'Nike', 'category_id' => $this->sneakers->id]);
-        // Same size and category (55.56) but not the user's size: 0.6 x 55.56 = 33.34, below 40.
+        // The viewed pair's size + category: for the user only the category counts (22.22) → 13.33, below 40.
         $forGuest = $this->candidate(['name' => 'Vans UK 8', 'size' => 8, 'category_id' => $this->sneakers->id]);
 
         $recommendations = app(Recommender::class)->forProduct($this->viewed, $this->user);
         $this->assertSame([$forUser->id], $recommendations->pluck('id')->all());
-        $this->assertSame([42.66, 44.44, 40.0], [
+        $this->assertSame([62.67, 77.78, 40.0], [
             $recommendations->first()->recommendation_score,
             $recommendations->first()->similarity_score,
             $recommendations->first()->personal_score,
         ]);
-        $this->assertContains('Your size', $recommendations->first()->recommendation_reasons);
+        $this->assertSame(
+            ['In your size (UK 12)', 'Same category as this pair: Sneakers', 'Same brand as this pair: Nike'],
+            $recommendations->first()->recommendation_reasons,
+        );
 
         // Guests are unaffected by the user's data.
-        $this->assertSame([$forGuest->id, $forUser->id], $this->recommendedIds(null));
+        $guest = app(Recommender::class)->forProduct($this->viewed, null);
+        $this->assertSame([$forGuest->id, $forUser->id], $guest->pluck('id')->all());
+        $this->assertContains('Same size as this pair (UK 8)', $guest->first()->recommendation_reasons);
+    }
+
+    public function test_the_product_page_is_size_gated_for_customers_with_a_known_size_only(): void
+    {
+        $this->prefer(['shoe_size' => 12]);
+        // Matches the viewed UK 8 pair in everything but the customer's size.
+        $wrongSize = $this->candidate(['size' => 8, 'brand' => 'Nike', 'category_id' => $this->sneakers->id, 'price' => 300, 'condition' => ProductCondition::LikeNew]);
+        $halfSize = $this->candidate(['size' => 11.5, 'brand' => 'Nike', 'category_id' => $this->sneakers->id, 'price' => 300]);
+
+        $this->assertSame([$halfSize->id], $this->recommendedIds($this->user));
+        $this->assertContains($wrongSize->id, $this->recommendedIds(null), 'Guests are not gated.');
+
+        // A customer with data but no known size is not gated either.
+        $other = User::factory()->create();
+        $this->prefer(['preferred_brands' => ['Nike']], $other);
+        $this->assertContains($wrongSize->id, $this->recommendedIds($other));
+    }
+
+    public function test_cards_show_at_most_3_labels_with_personal_ones_first_and_no_repeats(): void
+    {
+        $this->prefer(['shoe_size' => 12, 'preferred_brands' => ['Nike'], 'max_price' => 400]);
+        foreach (range(1, 3) as $i) {
+            $this->interact($this->candidate(['size' => 3, 'category_id' => $this->sneakers->id]), 'view');
+        }
+        // Personal: size, brand, category, budget; similarity: category, brand, price, condition.
+        $this->candidate(['size' => 12, 'brand' => 'Nike', 'category_id' => $this->sneakers->id, 'price' => 300, 'condition' => ProductCondition::LikeNew]);
+
+        $this->assertSame(
+            ['In your size (UK 12)', 'Brand you like: Nike', 'Category you browse: Sneakers'],
+            app(Recommender::class)->forProduct($this->viewed, $this->user)->first()->recommendation_reasons,
+        );
+    }
+
+    public function test_a_personal_brand_or_category_label_replaces_the_same_as_this_pair_one(): void
+    {
+        $this->assertSame(
+            ['In your size (UK 12)', 'Brand you like: Nike', 'Similar price'],
+            Recommender::topReasons(['In your size (UK 12)', 'Brand you like: Nike'], ['In your size (UK 12)', 'Same brand as this pair: Nike', 'Similar price', 'Similar condition']),
+        );
+        $this->assertSame(
+            ['Category you browse: Boots', 'Same brand as this pair: Vans', 'Similar price'],
+            Recommender::topReasons(['Category you browse: Boots'], ['Same category as this pair: Boots', 'Same brand as this pair: Vans', 'Similar price']),
+        );
+        $this->assertSame(
+            ['Same size as this pair (UK 8)', 'Same category as this pair: Sneakers', 'Same brand as this pair: Nike'],
+            Recommender::topReasons([], ['Same size as this pair (UK 8)', 'Same category as this pair: Sneakers', 'Same brand as this pair: Nike', 'Similar price']),
+            'Guests: the first 3 similarity labels.',
+        );
     }
 
     public function test_order_is_final_score_then_smaller_price_difference_then_newest(): void
@@ -286,7 +489,7 @@ class PersonalRecommendationTest extends TestCase
         $this->assertSame($this->recommendedIds(null), $this->recommendedIds(null), 'Deterministic.');
     }
 
-    public function test_unavailable_sold_viewed_and_in_cart_products_are_left_out(): void
+    public function test_unavailable_sold_viewed_in_cart_and_reserved_products_are_left_out(): void
     {
         $match = ['size' => 8, 'category_id' => $this->sneakers->id];
         $this->candidate([...$match, 'status' => ProductStatus::Sold, 'stock' => 0]);
@@ -296,13 +499,36 @@ class PersonalRecommendationTest extends TestCase
         $expiredLine = $this->candidate($match);
         $ok = $this->candidate($match);
 
-        $cart = Cart::create(['user_id' => $this->user->id]);
-        $cart->items()->create(['product_id' => $inCart->id, 'quantity' => 1, 'reserved_until' => now()->addMinutes(10)]);
-        $cart->items()->create(['product_id' => $expiredLine->id, 'quantity' => 1, 'reserved_until' => now()->subMinute()]);
+        $this->holdInCart($inCart, $this->user);
+        $this->holdInCart($expiredLine, $this->user, active: false);
 
         $this->assertEqualsCanonicalizing([$ok->id, $expiredLine->id], $this->recommendedIds($this->user));
         $this->assertNotContains($this->viewed->id, $this->recommendedIds($this->user));
-        $this->assertContains($inCart->id, $this->recommendedIds(null), 'Only the cart owner skips it.');
+        $this->assertNotContains($inCart->id, $this->recommendedIds(null), 'Reserved for someone else.');
+        $this->assertNotContains($inCart->id, $this->recommendedIds(User::factory()->create()));
+    }
+
+    public function test_a_pair_with_a_free_unit_left_is_still_recommended(): void
+    {
+        $twoPairs = $this->candidate(['size' => 8, 'category_id' => $this->sneakers->id, 'stock' => 2]);
+        $this->holdInCart($twoPairs, User::factory()->create());
+
+        $this->assertContains($twoPairs->id, $this->recommendedIds($this->user));
+    }
+
+    public function test_at_most_one_pair_per_name_colour_and_size(): void
+    {
+        $same = ['name' => 'Adidas Samba OG', 'color' => 'Black/White', 'size' => 8, 'category_id' => $this->sneakers->id];
+        $first = $this->candidate([...$same, 'price' => 300]);
+        $duplicate = $this->candidate([...$same, 'name' => 'adidas samba og', 'price' => 310]);
+        $otherColour = $this->candidate([...$same, 'color' => 'White', 'price' => 320]);
+        $otherSize = $this->candidate([...$same, 'size' => 8.5, 'brand' => 'Nike', 'price' => 300]);
+
+        $ids = $this->recommendedIds(null);
+        $this->assertContains($first->id, $ids);
+        $this->assertNotContains($duplicate->id, $ids);
+        $this->assertContains($otherColour->id, $ids);
+        $this->assertContains($otherSize->id, $ids);
     }
 
     public function test_product_page_marks_personal_picks_and_tags_links(): void
@@ -311,7 +537,8 @@ class PersonalRecommendationTest extends TestCase
         $pick = $this->candidate(['name' => 'Nike Boot UK 12', 'slug' => 'nike-boot-uk-12', 'brand' => 'Nike', 'category_id' => $this->sneakers->id]);
 
         $this->actingAs($this->user)->get(route('shop.show', 'nike-dunk-low'))
-            ->assertSee(['You may also like', 'Also based on your shoe preferences', 'Nike Boot UK 12', 'Same category · Same brand · Your size'])
+            ->assertSee(['You may also like', 'Also based on your shoe preferences', 'Nike Boot UK 12',
+                'In your size (UK 12) · Same category as this pair: Sneakers · Same brand as this pair: Nike'])
             ->assertSee(route('shop.show', ['slug' => $pick->slug, 'src' => 'recommendation']), false);
 
         auth()->logout();
@@ -325,19 +552,67 @@ class PersonalRecommendationTest extends TestCase
         $this->prefer(['shoe_size' => 9, 'max_price' => 200]);
         $sizeAndBudget = $this->candidate(['name' => 'Size and budget', 'size' => 9, 'price' => 150]); // 60
         $sizeOnly = $this->candidate(['name' => 'Size only', 'size' => 9]);                          // 40
-        $budgetOnly = $this->candidate(['name' => 'Budget only', 'price' => 100]);                   // 20
-        $this->candidate(['name' => 'Nothing for me']);                                              // 0
+        $nearSize = $this->candidate(['name' => 'Half a size up', 'size' => 9.5]);                   // 20
+        $this->candidate(['name' => 'Budget but wrong size', 'price' => 100]);                       // UK 12: gated out
         $inCart = $this->candidate(['name' => 'Already in cart', 'size' => 9, 'price' => 150]);
-        Cart::create(['user_id' => $this->user->id])->items()->create(['product_id' => $inCart->id, 'quantity' => 1, 'reserved_until' => now()->addMinutes(10)]);
+        $this->holdInCart($inCart, $this->user);
 
         $forYou = app(Recommender::class)->forYou($this->user);
-        $this->assertSame([$sizeAndBudget->id, $sizeOnly->id, $budgetOnly->id], $forYou->pluck('id')->all());
-        $this->assertSame(['Your size', 'In your budget'], $forYou->first()->recommendation_reasons);
+        $this->assertSame([$sizeAndBudget->id, $sizeOnly->id, $nearSize->id], $forYou->pluck('id')->all());
+        $this->assertSame(['In your size (UK 9)', 'Within your budget (up to RM200)'], $forYou->first()->recommendation_reasons);
+        $this->assertSame(['Close to your size (UK 9)'], $forYou->last()->recommendation_reasons);
 
         $this->actingAs($this->user)->get(route('home'))
             ->assertSee('data-for-you', false)
-            ->assertSeeInOrder(['For you', 'Size and budget', 'Size only', 'Budget only', 'Newly added'])
+            ->assertSeeInOrder(['For you', 'Size and budget', 'Size only', 'Half a size up', 'Newly added'])
             ->assertSee(route('shop.show', ['slug' => $sizeOnly->slug, 'src' => 'for_you']), false);
+    }
+
+    public function test_for_you_never_shows_wrong_sizes_even_if_that_leaves_fewer_than_4(): void
+    {
+        $this->prefer(['shoe_size' => 11, 'preferred_brands' => ['Nike']]);
+        $fits = [$this->candidate(['size' => 11, 'brand' => 'Nike']), $this->candidate(['size' => 10.5]), $this->candidate(['size' => 11.5])];
+        foreach ([7, 10, 12, 13] as $size) {
+            $this->candidate(['size' => $size, 'brand' => 'Nike']);
+        }
+
+        $this->assertEqualsCanonicalizing(collect($fits)->pluck('id')->all(), app(Recommender::class)->forYou($this->user)->pluck('id')->all());
+    }
+
+    public function test_for_you_says_when_nothing_is_in_the_customers_size(): void
+    {
+        $this->prefer(['shoe_size' => 4]);
+        $this->candidate(['size' => 12]);
+
+        $this->actingAs($this->user)->get(route('home'))
+            ->assertSee('No pairs in your size right now.')
+            ->assertDontSee('Set your shoe size, brands and budget');
+    }
+
+    public function test_for_you_leaves_out_reserved_pairs_and_duplicates(): void
+    {
+        $this->prefer(['shoe_size' => 9]);
+        $sambas = [$this->candidate(['name' => 'Samba', 'size' => 9])->id, $this->candidate(['name' => 'Samba', 'size' => 9])->id];
+        $reserved = $this->candidate(['size' => 9]);
+        $this->holdInCart($reserved, User::factory()->create());
+
+        $ids = app(Recommender::class)->forYou($this->user)->pluck('id')->all();
+        $this->assertCount(1, $ids);
+        $this->assertContains($ids[0], $sambas);
+    }
+
+    public function test_for_you_cards_show_at_most_3_labels_and_drop_the_budget_first(): void
+    {
+        $this->prefer(['shoe_size' => 9, 'preferred_brands' => ['Nike'], 'max_price' => 400]);
+        foreach (range(1, 3) as $i) {
+            $this->interact($this->candidate(['size' => 3, 'category_id' => $this->sneakers->id]), 'view');
+        }
+        $this->candidate(['size' => 9, 'brand' => 'Nike', 'category_id' => $this->sneakers->id, 'price' => 300]);
+
+        $this->assertSame(
+            ['In your size (UK 9)', 'Brand you like: Nike', 'Category you browse: Sneakers'],
+            app(Recommender::class)->forYou($this->user)->first()->recommendation_reasons,
+        );
     }
 
     public function test_for_you_keeps_the_top_4(): void

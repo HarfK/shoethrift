@@ -70,12 +70,17 @@ class CheckoutController extends Controller
             'save_address' => ['nullable', 'boolean'],
             'payment_method' => ['required', Rule::enum(PaymentMethod::class)],
             'expected_total' => ['required', 'numeric'],
-            'points' => ['nullable', 'integer', 'min:0'],
+            // "Use my points": the number only counts when the box is ticked (a hidden input still submits).
+            'use_points' => ['nullable', 'boolean'],
+            'points' => [Rule::requiredIf($request->boolean('use_points')), 'nullable', 'integer', 'min:0'],
         ], [
             ...AddressRequest::fieldMessages(),
             'address_id.exists' => 'Choose one of your saved addresses.',
             'payment_method.required' => 'Choose how you want to pay.',
+            'points.required' => 'Enter how many points to use, or untick "Use my points".',
+            'points.integer' => 'Enter a whole number of points.',
         ]);
+        $usePoints = $request->boolean('use_points') ? (int) $data['points'] : 0;
         $paymentMethod = PaymentMethod::from($data['payment_method']);
 
         // The order keeps a snapshot; it never links to the address book.
@@ -98,7 +103,7 @@ class CheckoutController extends Controller
                 $address->toShippingSnapshot(),
                 (string) $data['expected_total'],
                 $paymentMethod,
-                (int) ($data['points'] ?? 0),
+                $usePoints,
             );
         } catch (ItemsUnavailableException $e) {
             // Drop what's gone (and clamp quantities) so the customer reviews an accurate cart.
@@ -167,20 +172,18 @@ class CheckoutController extends Controller
     }
 
     /**
-     * Loyalty points for the checkout page: balance, the choices allowed for this cart, and what it will earn.
+     * Loyalty points for the checkout page: balance, the most this order may use (cap and balance), the
+     * step and minimum, the value of one step in sen (for the live discount), and what the order will earn.
      *
-     * @return array{balance: int, value: string, max: int, options: array<int, string>, earn: int, min: int}
+     * @return array{balance: int, value: string, max: int, maxDiscount: string, min: int, step: int, stepSen: int, rule: string, earn: int}
      */
     private function pointsOptions(PointsService $points, int $userId, float $subtotal): array
     {
         $balance = $points->balance($userId);
         $max = $points->maxRedeemable($balance, $subtotal);
-        $options = [];
-        for ($p = $points->minPoints(); $p <= $max; $p += $points->blockPoints()) {
-            $options[$p] = $points->discountFor($p);
-        }
 
-        return ['balance' => $balance, 'value' => $points->discountFor($balance), 'max' => $max, 'options' => $options,
-            'earn' => $points->pointsForSubtotal($subtotal), 'min' => $points->minPoints()];
+        return ['balance' => $balance, 'value' => $points->discountFor($balance), 'max' => $max, 'maxDiscount' => $points->discountFor($max),
+            'min' => $points->minPoints(), 'step' => $points->blockPoints(), 'stepSen' => PlaceOrder::toSen(config('loyalty.redeem_block_value')),
+            'rule' => $points->ruleText(), 'earn' => $points->pointsForSubtotal($subtotal)];
     }
 }

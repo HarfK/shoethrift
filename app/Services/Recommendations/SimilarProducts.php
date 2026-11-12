@@ -22,7 +22,8 @@ use Illuminate\Support\Facades\DB;
  * so the same page always gets the same list.
  *
  * The product page uses Recommender, which scales this score to 0-100 (score / maxScore() * 100)
- * and may mix in PersonalScore. for() is still used for the cart's "similar pairs" links.
+ * and may mix in PersonalScore; for a customer with a known size it passes THEIR size for the size
+ * rule ($size). for() is still used for the cart's "similar pairs" links.
  */
 class SimilarProducts
 {
@@ -38,13 +39,15 @@ class SimilarProducts
         'condition' => 1,
     ];
 
+    /** Labels for the price and condition rules; size, category and brand labels name the value. */
     public const REASONS = [
-        'size' => 'Same size',
-        'category' => 'Same category',
-        'brand' => 'Same brand',
         'price' => 'Similar price',
         'condition' => 'Similar condition',
     ];
+
+    public const SAME_CATEGORY_LABEL = 'Same category as this pair';
+
+    public const SAME_BRAND_LABEL = 'Same brand as this pair: ';
 
     /**
      * Up to LIMIT recommendations, each with `recommendation_score` and `recommendation_reasons`.
@@ -85,36 +88,44 @@ class SimilarProducts
      * (0 to maxScore()). Only the columns needed for scoring are loaded; no limit.
      *
      * @param  list<int>  $excludeIds
+     * @param  ?float  $size  the size for the size rule (the customer's); null = the viewed pair's size
      * @return Collection<int, Product>
      */
-    public function scored(Product $product, array $excludeIds = []): Collection
+    public function scored(Product $product, array $excludeIds = [], ?float $size = null): Collection
     {
-        [$scoreSql, $bindings] = $this->scoreExpression($product);
+        [$scoreSql, $bindings] = $this->scoreExpression($product, $size);
 
         return Product::available()
             ->whereKeyNot($product->id)
             ->whereNotIn('products.id', $excludeIds)
-            ->select(['products.id', 'products.size', 'products.brand', 'products.category_id', 'products.price', 'products.created_at'])
+            ->select(['products.id', 'products.name', 'products.color', 'products.size', 'products.brand', 'products.category_id', 'products.price', 'products.created_at'])
             ->selectRaw("({$scoreSql}) as recommendation_score", $bindings)
             ->get();
     }
 
     /**
-     * Which rules matched, in weight order (for the "Same size · Same brand" label).
+     * Labels for the rules that matched, in weight order, e.g. "Same size as this pair (UK 12)",
+     * "Same brand as this pair: Adidas". With $size (the customer's size) the size label is
+     * "In your size (UK 11)". The candidate needs its category loaded for the category label.
      *
      * @return list<string>
      */
-    public function reasons(Product $product, Product $candidate): array
+    public function reasons(Product $product, Product $candidate, ?float $size = null): array
     {
-        $matched = [
-            'size' => (float) $candidate->size === (float) $product->size,
-            'category' => $candidate->category_id === $product->category_id,
-            'brand' => mb_strtolower($candidate->brand) === mb_strtolower($product->brand),
-            'price' => $this->withinPriceRange((float) $candidate->price, (float) $product->price),
-            'condition' => in_array($candidate->condition, self::similarConditions($product->condition), true),
-        ];
+        $ruleSize = $size ?? (float) $product->size;
+        $category = $candidate->category?->name;
 
-        return array_values(array_map(fn (string $rule) => self::REASONS[$rule], array_keys(array_filter($matched))));
+        return array_values(array_filter([
+            (float) $candidate->size === $ruleSize
+                ? ($size === null ? 'Same size as this pair ('.$product->size_label.')' : 'In your size (UK '.Product::formatSize($size).')')
+                : null,
+            $candidate->category_id === $product->category_id
+                ? ($category ? self::SAME_CATEGORY_LABEL.": {$category}" : self::SAME_CATEGORY_LABEL)
+                : null,
+            mb_strtolower($candidate->brand) === mb_strtolower($product->brand) ? self::SAME_BRAND_LABEL.$product->brand : null,
+            $this->withinPriceRange((float) $candidate->price, (float) $product->price) ? self::REASONS['price'] : null,
+            in_array($candidate->condition, self::similarConditions($product->condition), true) ? self::REASONS['condition'] : null,
+        ]));
     }
 
     /**
@@ -133,7 +144,7 @@ class SimilarProducts
     /**
      * @return array{0: string, 1: list<mixed>}
      */
-    private function scoreExpression(Product $product): array
+    private function scoreExpression(Product $product, ?float $size = null): array
     {
         $grammar = DB::getQueryGrammar();
         [$min, $max] = $this->priceRange((float) $product->price);
@@ -148,7 +159,7 @@ class SimilarProducts
             "(case when {$grammar->wrap('condition')} in (".implode(', ', array_fill(0, count($conditions), '?')).") then {$w['condition']} else 0 end)",
         ]);
 
-        return [$sql, [(float) $product->size, $product->category_id, mb_strtolower($product->brand), $min, $max, ...$conditions]];
+        return [$sql, [$size ?? (float) $product->size, $product->category_id, mb_strtolower($product->brand), $min, $max, ...$conditions]];
     }
 
     /**

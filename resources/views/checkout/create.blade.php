@@ -117,38 +117,75 @@
                 <dl class="mt-3 space-y-1.5 border-t border-stone-200 pt-3 text-sm">
                     <div class="flex justify-between"><dt class="text-stone-600">Subtotal</dt><dd class="tabular-nums">RM {{ number_format($subtotal, 2) }}</dd></div>
                     <div class="flex justify-between"><dt class="text-stone-600">Shipping</dt><dd class="tabular-nums">RM {{ number_format($shippingFee, 2) }}</dd></div>
-                    @php($chosenPoints = (int) old('points', 0))
-                    @php($chosenDiscount = (float) ($points['options'][$chosenPoints] ?? 0))
+                    {{-- Initial state after a validation error; the inline script keeps it live while typing. --}}
+                    @php($usePoints = (bool) old('use_points') && $points['max'] > 0)
+                    @php($chosenPoints = $usePoints && is_numeric(old('points')) ? (int) old('points') : 0)
+                    @php($chosenOk = $chosenPoints >= $points['min'] && $chosenPoints <= $points['max'] && $chosenPoints % $points['step'] === 0)
+                    @php($chosenDiscount = $chosenOk ? intdiv($chosenPoints, $points['step']) * $points['stepSen'] / 100 : 0)
                     <div @class(['flex justify-between text-emerald-800', 'hidden' => $chosenDiscount <= 0]) data-points-row>
                         <dt>Points discount</dt><dd class="tabular-nums" data-points-discount>−RM {{ number_format($chosenDiscount, 2) }}</dd>
                     </div>
                     <div class="flex justify-between pt-1.5 text-base font-semibold"><dt>Total</dt><dd class="tabular-nums" data-total data-base-total="{{ number_format($total, 2, '.', '') }}">RM {{ number_format($total - $chosenDiscount, 2) }}</dd></div>
                 </dl>
 
-                {{-- Loyalty points (config/loyalty.php). The discount is recalculated by the server when the order is placed. --}}
-                <div class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-sm" data-points-box>
+                {{-- Loyalty points (config/loyalty.php). Only a preview: the server recalculates the discount when the order is placed. --}}
+                <div class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-sm" data-points-box
+                     data-min="{{ $points['min'] }}" data-max="{{ $points['max'] }}" data-step="{{ $points['step'] }}" data-step-sen="{{ $points['stepSen'] }}">
                     @if ($points['balance'] > 0)
                         <p class="font-medium text-emerald-900">You have {{ number_format($points['balance']) }} points <span class="font-normal text-emerald-900/80">(worth RM {{ $points['value'] }})</span></p>
                         @if ($points['max'] > 0)
-                            <label for="points" class="mt-2 block text-emerald-900">Use points</label>
-                            <select id="points" name="points" data-points-select
-                                    class="mt-1 block w-full rounded-md border border-stone-300 bg-white px-3 py-2"
-                                    onchange="(() => { const f = this.form, d = Number(this.selectedOptions[0].dataset.discount || 0), t = f.querySelector('[data-total]'), r = f.querySelector('[data-points-row]'); r.classList.toggle('hidden', d <= 0); f.querySelector('[data-points-discount]').textContent = '−RM ' + d.toFixed(2); t.textContent = 'RM ' + (Number(t.dataset.baseTotal) - d).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); })()">
-                                <option value="0">Don't use points</option>
-                                @foreach ($points['options'] as $optionPoints => $optionDiscount)
-                                    <option value="{{ $optionPoints }}" data-discount="{{ $optionDiscount }}" @selected($chosenPoints === $optionPoints)>{{ number_format($optionPoints) }} points: −RM {{ $optionDiscount }}</option>
-                                @endforeach
-                            </select>
-                            <p class="mt-1 text-xs text-emerald-900/80">Every {{ config('loyalty.redeem_block_points') }} points = RM {{ number_format(config('loyalty.redeem_block_value'), 2) }} off, up to {{ (int) round(100 * config('loyalty.redeem_max_share')) }}% of the items.</p>
-                        @else
-                            <p class="mt-1 text-xs text-emerald-900/80">Points can be used from {{ $points['min'] }} points, for up to {{ (int) round(100 * config('loyalty.redeem_max_share')) }}% of the items.</p>
+                            {{-- The fields show while the box is ticked (CSS only); the script just updates the numbers. --}}
+                            <div class="group mt-2">
+                                <label class="flex cursor-pointer items-center gap-2 font-medium text-emerald-900">
+                                    <input type="checkbox" name="use_points" value="1" data-use-points @checked($usePoints)
+                                           class="rounded border-stone-300 text-emerald-700" onchange="checkoutPoints(this.form)">
+                                    Use my points
+                                </label>
+                                <div class="mt-2 hidden group-has-checked:block" data-points-fields>
+                                    <label for="points" class="block text-emerald-900">Points to use</label>
+                                    <div class="mt-1 flex flex-wrap items-center gap-2">
+                                        <input id="points" name="points" type="number" inputmode="numeric" data-points-input
+                                               min="{{ $points['min'] }}" max="{{ $points['max'] }}" step="{{ $points['step'] }}"
+                                               value="{{ $usePoints ? old('points') : '' }}" placeholder="{{ $points['min'] }}" @disabled(! $usePoints)
+                                               class="block w-32 rounded-md border border-stone-300 bg-white px-3 py-2 tabular-nums" oninput="checkoutPoints(this.form)">
+                                        <button type="button" data-points-max
+                                                class="rounded-md border border-emerald-700 px-3 py-2 font-medium text-emerald-800 hover:bg-emerald-100"
+                                                onclick="(f => { f.querySelector('[data-points-input]').value = f.querySelector('[data-points-box]').dataset.max; checkoutPoints(f); })(this.form)">
+                                            Use maximum
+                                        </button>
+                                        <span class="ml-auto font-semibold tabular-nums text-emerald-800" data-points-preview>{{ $chosenOk ? '−RM '.number_format($chosenDiscount, 2) : '' }}</span>
+                                    </div>
+                                    <p class="mt-1 text-xs text-emerald-900/80">Up to {{ number_format($points['max']) }} points (−RM {{ $points['maxDiscount'] }}) on this order.</p>
+                                    <p class="mt-1 hidden text-xs text-amber-800" data-points-hint>Enter {{ number_format($points['min']) }}–{{ number_format($points['max']) }} points in steps of {{ $points['step'] }}.</p>
+                                </div>
+                            </div>
                         @endif
+                        <p class="mt-2 text-xs text-emerald-900/80" data-points-rule>{{ $points['rule'] }}</p>
                     @endif
                     <p @class(['text-emerald-900', 'mt-2' => $points['balance'] > 0])>You'll earn <strong>{{ number_format($points['earn']) }} points</strong> when this order is completed.</p>
                     @error('points')
                         <p class="mt-1 text-red-600">{{ $message }}</p>
                     @enderror
                 </div>
+                <script>
+                    // Live preview of the points discount and the total; the rules come from the box's data attributes (config/loyalty.php).
+                    function checkoutPoints(form) {
+                        const box = form.querySelector('[data-points-box]'), use = form.querySelector('[data-use-points]'), input = form.querySelector('[data-points-input]');
+                        if (!use || !input) return;
+                        const min = Number(box.dataset.min), max = Number(box.dataset.max), step = Number(box.dataset.step), stepSen = Number(box.dataset.stepSen);
+                        const n = Number(input.value), typed = input.value.trim() !== '';
+                        const ok = use.checked && typed && Number.isInteger(n) && n >= min && n <= max && n % step === 0;
+                        const sen = ok ? (n / step) * stepSen : 0;
+                        const rm = v => (v / 100).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        input.disabled = !use.checked; // a hidden field must not block the form
+                        form.querySelector('[data-points-preview]').textContent = ok ? '−RM ' + rm(sen) : '';
+                        form.querySelector('[data-points-hint]').classList.toggle('hidden', !use.checked || !typed || ok);
+                        form.querySelector('[data-points-row]').classList.toggle('hidden', sen <= 0);
+                        form.querySelector('[data-points-discount]').textContent = '−RM ' + rm(sen);
+                        const total = form.querySelector('[data-total]');
+                        total.textContent = 'RM ' + rm(Math.round(Number(total.dataset.baseTotal) * 100) - sen);
+                    }
+                </script>
 
                 <button type="submit" data-place-order
                         class="mt-5 w-full rounded-md bg-stone-900 px-4 py-3 font-semibold text-white hover:bg-stone-700 disabled:cursor-wait disabled:opacity-60">

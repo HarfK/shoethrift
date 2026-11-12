@@ -23,7 +23,9 @@ class PointsController extends Controller
 
         return view('account.points', [
             'balance' => $balance,
-            'value' => $points->discountFor($balance), // usable value: whole blocks only
+            'value' => $points->discountFor($balance), // usable value: whole steps only
+            'rule' => $points->ruleText(),
+            'minPoints' => $points->minPoints(),
             'expiringSoon' => $points->expiringSoon($user),
             'nextExpiry' => $points->nextExpiry($user),
             'history' => $user->pointTransactions()->with('order:id,order_number')->orderByDesc('id')->paginate(self::PER_PAGE),

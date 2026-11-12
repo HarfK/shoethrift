@@ -14,15 +14,16 @@ return [
     // Points are credited when the order becomes Completed (online: delivered; COD: cash collected).
     'credit_on_status' => 'completed',
 
-    // Redeem in blocks: every 100 points = RM5 off.
+    // Redeem in steps of this many points; each step is worth redeem_block_value RM off (100 points = RM1).
+    // Orders keep the points_discount stored when they were placed, so changing these never alters past orders.
     'redeem_block_points' => 100,
-    'redeem_block_value' => 5.00,
+    'redeem_block_value' => 1.00,
 
     // At least this many points per redemption.
-    'redeem_min_points' => 100,
+    'redeem_min_points' => 500,
 
-    // The discount can't be more than this share of the item subtotal.
-    'redeem_max_share' => 0.5,
+    // The discount can't be more than this share of the item subtotal (20%).
+    'redeem_max_share' => 0.2,
 
     // Points expire this many months after they were earned (oldest points are used / expire first).
     'expiry_months' => 12,

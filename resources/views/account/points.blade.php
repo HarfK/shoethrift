@@ -2,7 +2,7 @@
     <h1 class="text-2xl font-bold tracking-tight">My points</h1>
     <p class="mt-1 text-sm text-stone-600">
         Earn {{ config('loyalty.earn_per_ringgit') }} point per RM1 you spend on shoes (shipping not included), once your order is completed.
-        Every {{ config('loyalty.redeem_block_points') }} points = RM {{ number_format(config('loyalty.redeem_block_value'), 2) }} off at checkout, for up to {{ (int) round(100 * config('loyalty.redeem_max_share')) }}% of the items.
+        Use them at checkout: {{ $rule }}
         Points expire {{ config('loyalty.expiry_months') }} months after you earn them.
     </p>
 
@@ -11,6 +11,9 @@
             <dt class="text-sm text-emerald-800">Your balance</dt>
             <dd class="mt-1 text-3xl font-bold tabular-nums text-emerald-900">{{ number_format($balance) }} <span class="text-base font-medium">points</span></dd>
             <dd class="mt-1 text-sm text-emerald-800">Worth RM {{ $value }} at checkout</dd>
+            @if ($balance > 0 && $balance < $minPoints)
+                <dd class="mt-1 text-xs text-emerald-800/80" data-points-below-min>You can use points from {{ number_format($minPoints) }} points.</dd>
+            @endif
         </div>
         <div class="rounded-xl border border-stone-200 bg-white p-5" data-points-expiring>
             <dt class="text-sm text-stone-600">Expiring in the next {{ config('loyalty.expiring_soon_days') }} days</dt>

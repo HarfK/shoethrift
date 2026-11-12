@@ -18,6 +18,8 @@ class HomeController extends Controller
         return view('home', [
             // "For you": logged-in customers only, from their own preferences and history.
             'forYou' => $request->user() ? $recommender->forYou($request->user()) : null,
+            // Empty with data = nothing in their size right now; empty without = ask for preferences.
+            'forYouHasData' => $request->user() && $recommender->hasPersonalData($request->user()),
             'newArrivals' => Product::available()
                 ->with(['primaryImage', 'category'])
                 ->withRatingSummary()

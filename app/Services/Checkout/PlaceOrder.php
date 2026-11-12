@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\DB;
  * Prices and totals are never taken from the request; the total the customer saw is only
  * compared, so a price change can't slip through unnoticed.
  *
- * Loyalty points: `$points` (blocks of 100) lower the stored total, which is what HitPay charges and COD
+ * Loyalty points: `$points` (steps of config loyalty.redeem_block_points) lower the stored total, which is what HitPay charges and COD
  * collects. The expected total from the page is the total *before* points (the discount follows exactly from
  * the points chosen). The points are taken from the customer's balance inside this transaction
  * (PointsService::redeem locks the user row), so a failure anywhere rolls the points back too.

@@ -70,15 +70,15 @@ class RecommendationTest extends TestCase
     public static function rules(): array
     {
         return [
-            'same UK size (+3)' => [['size' => 8], 3, ['Same size']],
-            'same category (+2)' => [['category' => 'sneakers'], 2, ['Same category']],
-            'same brand, any case (+2)' => [['brand' => 'NIKE'], 2, ['Same brand']],
+            'same UK size (+3)' => [['size' => 8], 3, ['Same size as this pair (UK 8)']],
+            'same category (+2)' => [['category' => 'sneakers'], 2, ['Same category as this pair: Sneakers']],
+            'same brand, any case (+2)' => [['brand' => 'NIKE'], 2, ['Same brand as this pair: Nike']],
             'price exactly 30% higher (+1)' => [['price' => 390], 1, ['Similar price']],
             'price exactly 30% lower (+1)' => [['price' => 210], 1, ['Similar price']],
             'condition one step away (+1)' => [['condition' => ProductCondition::Good], 1, ['Similar condition']],
             'same condition (+1)' => [['condition' => ProductCondition::LikeNew], 1, ['Similar condition']],
             'everything (+9)' => [['size' => 8, 'category' => 'sneakers', 'brand' => 'Nike', 'price' => 280, 'condition' => ProductCondition::Good], 9,
-                ['Same size', 'Same category', 'Same brand', 'Similar price', 'Similar condition']],
+                ['Same size as this pair (UK 8)', 'Same category as this pair: Sneakers', 'Same brand as this pair: Nike', 'Similar price', 'Similar condition']],
         ];
     }
 
@@ -176,7 +176,7 @@ class RecommendationTest extends TestCase
 
         $this->get(route('shop.show', 'nike-dunk-low'))
             ->assertSee(['You may also like', 'Picked by size, category, brand, price and condition.'])
-            ->assertSeeInOrder(['You may also like', 'Adidas Samba OG', 'Same size · Same category', 'Reviews'])
+            ->assertSeeInOrder(['You may also like', 'Adidas Samba OG', 'Same size as this pair (UK 8) · Same category as this pair: Sneakers', 'Reviews'])
             ->assertDontSee('Totally Unrelated Boot');
     }
 

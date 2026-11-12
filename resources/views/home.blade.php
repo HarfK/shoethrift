@@ -45,7 +45,13 @@
     @if ($forYou !== null)
         <section class="mx-auto max-w-7xl px-4 pt-12 sm:px-6" aria-labelledby="for-you-heading" data-for-you>
             <h2 id="for-you-heading" class="text-2xl font-bold tracking-tight">For you</h2>
-            @if ($forYou->isEmpty())
+            @if ($forYou->isEmpty() && $forYouHasData)
+                <p class="mt-4 rounded-xl border border-dashed border-stone-300 p-6 text-center text-stone-600" data-for-you-none>
+                    No pairs in your size right now.
+                    <a href="{{ route('shop.index') }}" class="font-medium text-emerald-700 hover:underline">Browse all shoes</a>
+                    or <a href="{{ route('account.profile') }}#preferences-heading" class="font-medium text-emerald-700 hover:underline">update your shoe preferences</a>.
+                </p>
+            @elseif ($forYou->isEmpty())
                 <p class="mt-4 rounded-xl border border-dashed border-stone-300 p-6 text-center text-stone-600">
                     <a href="{{ route('account.profile') }}#preferences-heading" class="font-medium text-emerald-700 hover:underline">Set your shoe size, brands and budget</a>
                     to see pairs picked for you.

@@ -239,7 +239,7 @@ The tables are users → orders → order_items ← products → product_images,
 - **Selection and order:**
   - Products scoring 0 are excluded, and at most 8 (`LIMIT`) are shown.
   - Order: score descending, then closest price (`abs(price - ?)`), then newest, then id, so the result is **deterministic** and testable.
-- **"Why" labels:** each result carries `recommendation_score` and `recommendation_reasons` ("Same size · Same brand"), which `<x-product-card :reasons>` shows.
+- **"Why" labels:** each result carries `recommendation_score` and `recommendation_reasons`, which `<x-product-card :reasons>` shows. They name the value: "Same size as this pair (UK 12)", "Same category as this pair: Casual", "Same brand as this pair: Adidas", "Similar price", "Similar condition". With a customer's size passed to `scored()`/`reasons()` (`$size`), the size rule compares with THAT size and reads "In your size (UK 11)".
 - No machine learning, by design; keep it that way. Change weights only in `WEIGHTS` and update `RecommendationTest`.
 - `SimilarProducts::for()` is still used as-is for the cart's "similar pairs" links. The product page goes through `Recommender` (below).
 
@@ -251,10 +251,14 @@ The tables are users → orders → order_items ← products → product_images,
   - cart: `CartController@store` after a successful add;
   - purchase: model events, not payment code. `OrderItem` created on a COD order, or `Order` status changing to Paid (online).
   - `?src=` on product links is stored as `source` only for `Interactions::SOURCES` (`recommendation`, `for_you`). `<x-product-card src="…">` adds it.
-- **`PersonalScore` (0-100):** size 40 (saved size, else the most frequent interacted size; ties: higher weight, then smaller size), brand 20 (saved preferred brand = 20, else 20 x weight / highest), category 20 (20 x weight / highest), budget 20 (inside the saved budget, else within 30% of the average interacted price). Weights: view 1, cart 3, purchase 5. No data = 0 for that part. Only the user's own rows.
-- **`Recommender::forProduct()`** ("You may also like"): similarity = `SimilarProducts` score / 9 x 100. With personal data, final = 0.6 x similarity + 0.4 x personal; guests and users without data get similarity only. Minimum 40, top 4, for everyone. Ties: smaller price difference, newest, id. Leaves out unavailable/sold, the viewed pair and pairs in the user's cart (active holds).
-- **`Recommender::forYou()`** (home "For you", logged in only): personal score only, above 0, top 4, same exclusions. Without data it shows a link to set preferences.
-- Tests: `PersonalRecommendationTest`. Change weights only in the class constants and update the tests.
+- **History used:** only interactions from the last 12 months (`HISTORY_MONTHS`), and only when there are at least 3 of them (`MIN_INTERACTIONS`); otherwise nothing is inferred from history (saved preferences still count). Each interaction weighs view 1, cart 3, purchase 5, multiplied by 0.5^(age in days / 180) (`HALF_LIFE_DAYS`, `PersonalScore::weight()`).
+- **`PersonalScore` (0-100):** size 40 for the customer's size, 20 half a size away (size = saved size, else the size with the most weight; ties: more interactions, then smaller size), brand 20 (saved preferred brand = 20, else 20 x weight / highest), category 20 (20 x weight / highest), budget 20 (inside the saved budget, else within 30% of the weighted average interacted price). No data = 0 for that part. Only the user's own rows.
+- **Personal labels** (`PersonalScore::reasons()`): "In your size (UK 11)", "Close to your size (UK 11)", "Brand you like: Nike", "Category you browse: Sneakers", "Within your budget (RM143–266)" (or "from RM…" / "up to RM…"). A brand or category is named only if it is a saved brand, or has at least 2 interactions **and** at least 30% of the top weight (`PersonalProfile::likesBrand()` / `browsesCategory()`); below that it still scores, just without a label.
+- **`Recommender::forProduct()`** ("You may also like"): similarity = `SimilarProducts` score / 9 x 100; for a customer with data and a known size, the size rule uses **their** size and only pairs within ±0.5 UK of it are shown (fewer than 4 rather than wrong sizes); guests, and customers without a known size, keep the viewed pair's size and no gate. With personal data, final = 0.6 x similarity + 0.4 x personal; guests and users without data get similarity only. Minimum 40, top 4, for everyone. Ties: smaller price difference, newest, id.
+- **`Recommender::forYou()`** (home "For you", logged in only): personal score only, above 0, top 4. When the size is known, only pairs within ±0.5 UK (`SIZE_GATE`); fewer than 4 rather than wrong sizes, and "No pairs in your size right now" when none. Without data (no preferences, not enough history) it shows the "Set your shoe size, brands and budget" link.
+- **Labels per card** (`Recommender::topReasons()`, both blocks): at most 3 (`MAX_REASONS`), personal first in the order size, brand, category, budget, then the similarity labels. "Same brand/category as this pair: X" is dropped when "Brand you like: X" / "Category you browse: X" is shown (matched by the label prefix constants in `PersonalScore` and `SimilarProducts`).
+- **Both blocks** leave out unavailable/sold pairs, pairs in the customer's own cart and pairs fully reserved by **other** shoppers' carts (`Recommender::reservedByOthersIds()`; for guests, anyone's cart), and keep at most one pair per name + colour + size. The product page also leaves out the viewed pair.
+- Tests: `PersonalRecommendationTest` (and `RecommendationTest` for the similarity rules). Change weights only in the class constants and update the tests.
 
 ## ML module (`ml-service/`, Python)
 
@@ -327,7 +331,7 @@ The tables are users → orders → order_items ← products → product_images,
 
 - **Rules:** all in `config/loyalty.php`.
   - Earn 1 point per RM1 of **item subtotal** (shipping excluded, rounded down), credited when the order becomes **Completed**.
-  - Redeem in blocks of 100 points = RM5, from 100 points, at most 50% of the item subtotal.
+  - Redeem in steps of 100 points = RM1 (`redeem_block_points` / `redeem_block_value`), from 500 points (`redeem_min_points`), at most 20% of the item subtotal (`redeem_max_share`). Changed on 12 Nov 2026 from RM5 / 100 / 50%: past orders keep their stored `points_redeemed` / `points_discount`. Show the rules with `PointsService::ruleText()` ("100 points = RM1 off, up to 20% of the items, minimum 500 points."); never hardcode them.
   - Points expire 12 months after they were earned.
 - **Ledger:** `point_transactions` (`PointTransaction`, type enum `PointTransactionType`: earn, redeem, reverse_earn, return_redeem, expire, adjust).
   - `points` is signed and `balance_after` is the running balance. Rows that add points are **lots** with `expires_at` and `remaining`.
@@ -345,7 +349,8 @@ The tables are users → orders → order_items ← products → product_images,
   - `orders.points_redeemed` and `orders.points_discount`. **`orders.total` is stored after the discount**, so HitPay's amount, the COD amount, refunds and SalesReport revenue all use the discounted total.
   - `$order->subtotal` adds the discount back (items total).
   - `PlaceOrder::handle(..., int $points)` checks the rules (`redeemError`) and calls `PointsService::redeem` inside its transaction, so any failure rolls the points back. A `PointsException` becomes a `points` validation error.
-  - **The page's `expected_total` is the total before points**; the discount follows from the points chosen. A tiny inline `onchange` updates the summary.
+  - **The page's `expected_total` is the total before points**; the discount follows from the points chosen.
+  - **UI:** a "Use my points" checkbox (`use_points`) reveals a number input (`points`, min/step/max from `CheckoutController::pointsOptions()`; max = `maxRedeemable()`, the lower of the cap and the balance) and a "Use maximum" button. The reveal is CSS (`group-has-checked`); a small inline `checkoutPoints()` script shows the discount and total live and disables the hidden input. The server ignores `points` unless the box is ticked, and requires it when it is.
   - Discount lines are shown in `<x-order-summary>`, the receipt and the admin order page.
 - **Pages:**
   - Customer: **My points** (`account.points`, `/account/points`): balance, expiring in 30 days, history. It is only ever the signed-in user's own ledger. The product page shows "Earn X points".

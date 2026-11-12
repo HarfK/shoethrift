@@ -60,13 +60,34 @@ class PointsService
         return intdiv(max(0, PlaceOrder::toSen($itemSubtotal)) * (int) config('loyalty.earn_per_ringgit'), 100);
     }
 
-    /** Most points (whole blocks) that may be used on an order with this item subtotal; 0 if under the minimum. */
+    /** The cap as a whole percentage of the item subtotal (config loyalty.redeem_max_share), e.g. 20. */
+    public function maxSharePercent(): int
+    {
+        return (int) round(100 * (float) config('loyalty.redeem_max_share'));
+    }
+
+    /** The largest discount allowed on this item subtotal, in sen. */
+    private function capSen(float|string $itemSubtotal): int
+    {
+        return (int) floor(PlaceOrder::toSen($itemSubtotal) * (float) config('loyalty.redeem_max_share'));
+    }
+
+    /** The rules in one line, all from config: "100 points = RM1 off, up to 20% of the items, minimum 500 points." */
+    public function ruleText(): string
+    {
+        $value = (float) config('loyalty.redeem_block_value');
+        $rm = 'RM'.number_format($value, fmod($value, 1.0) == 0.0 ? 0 : 2);
+
+        return number_format($this->blockPoints())." points = {$rm} off, up to {$this->maxSharePercent()}% of the items, minimum "
+            .number_format($this->minPoints()).' points.';
+    }
+
+    /** Most points (whole steps) that may be used on an order with this item subtotal; 0 if under the minimum. */
     public function maxRedeemable(int $balance, float|string $itemSubtotal): int
     {
         $block = $this->blockPoints();
-        $capSen = (int) floor(PlaceOrder::toSen($itemSubtotal) * (float) config('loyalty.redeem_max_share'));
-        $capBlocks = intdiv($capSen, max(1, PlaceOrder::toSen(config('loyalty.redeem_block_value'))));
-        $max = min(intdiv($balance, $block), $capBlocks) * $block;
+        $capBlocks = intdiv($this->capSen($itemSubtotal), max(1, PlaceOrder::toSen(config('loyalty.redeem_block_value'))));
+        $max = min(intdiv(max(0, $balance), $block), $capBlocks) * $block;
 
         return $max >= $this->minPoints() ? $max : 0;
     }
@@ -78,13 +99,20 @@ class PointsService
 
         return match (true) {
             $points === 0 => null,
-            $points < 0, $points % $block !== 0 => "Use points in blocks of {$block}.",
-            $points < $this->minPoints() => "You can use points from {$this->minPoints()} points.",
+            $points < $this->minPoints() => 'You can use points from '.number_format($this->minPoints()).' points.',
+            $points % $block !== 0 => 'Use points in steps of '.number_format($block).' (e.g. '.number_format($this->minPoints()).', '.number_format($this->minPoints() + $block).').',
             $points > $balance => 'You only have '.number_format($balance).' points.',
-            PlaceOrder::toSen($this->discountFor($points)) > (int) floor(PlaceOrder::toSen($itemSubtotal) * (float) config('loyalty.redeem_max_share')) => 'Points can pay for at most '.(int) round(100 * (float) config('loyalty.redeem_max_share')).'% of the items (RM '
-                    .number_format(PlaceOrder::toSen($itemSubtotal) * (float) config('loyalty.redeem_max_share') / 100, 2).').',
+            PlaceOrder::toSen($this->discountFor($points)) > $this->capSen($itemSubtotal) => $this->capMessage($itemSubtotal),
             default => null,
         };
+    }
+
+    private function capMessage(float|string $itemSubtotal): string
+    {
+        $allowed = $this->maxRedeemable(PHP_INT_MAX, $itemSubtotal);
+
+        return "Points can pay for at most {$this->maxSharePercent()}% of the items (RM ".number_format($this->capSen($itemSubtotal) / 100, 2).'), '
+            .($allowed > 0 ? 'so up to '.number_format($allowed).' points on this order.' : 'which is less than the minimum, so points can\'t be used on this order.');
     }
 
     // --- reading -------------------------------------------------------------------------------------
@@ -160,7 +188,7 @@ class PointsService
     public function redeem(User $user, Order $order, int $points): PointTransaction
     {
         if ($points <= 0 || $points % $this->blockPoints() !== 0 || $points < $this->minPoints()) {
-            throw new PointsException("Use points in blocks of {$this->blockPoints()}, from {$this->minPoints()} points.");
+            throw new PointsException("Use points in steps of {$this->blockPoints()}, from {$this->minPoints()} points.");
         }
 
         return DB::transaction(function () use ($user, $order, $points) {
